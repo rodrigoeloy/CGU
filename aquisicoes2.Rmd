@@ -1,0 +1,1785 @@
+![](C:/Users/User/OneDrive - CGU/corona/HTML/cabecalho.jpg)
+![](C:/Users/User/OneDrive - CGU/corona/HTML/cabecalho2.jpg)
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+
+```{r,include=FALSE}
+## Scripts de importação dos dados
+setwd("C:/Users/User/OneDrive - CGU/corona")
+library(tidyverse)
+library(plotly)
+library(viridis)
+library(hrbrthemes)
+library(brazilmaps)
+library(htmlwidgets)
+library(readxl)
+library(kableExtra)
+library(lubridate)
+library(xtable)
+
+aquisicoes_completo <- read_excel("ajustados_2_linha/piloto0806.xlsx", col_types = c("text", "text", "text", 
+                                                                                    "text", "text", "text",
+                                                                                    "text", "text", "text", 
+                                                                                    "text", "text", "text", 
+                                                                                    "text","text","numeric", 
+                                                                                    "text", "text", "text", 
+                                                                                    "text", "text", "text", 
+                                                                                    "text", "text","numeric", 
+                                                                                    "numeric","text","text",
+                                                                                    "numeric","text","numeric"))
+
+aquisicoes_compa <- aquisicoes_completo %>% filter(verificacao == "OK")
+aquisicoes_compa <- aquisicoes_compa %>% filter(ITEM_PADRONIZADO != "diversos")
+municipios <- read_csv2("C:/Users/User/OneDrive - CGU/corona/municipios.csv")
+estados <- read_csv2("C:/Users/User/OneDrive - CGU/corona/estados.csv")
+populacao <- read_csv2("C:/Users/User/OneDrive - CGU/corona/populacao.csv")
+casos <- read_csv2("C:/Users/User/OneDrive - CGU/corona/casos_55.csv")
+federais <- read_csv2("C:/Users/User/OneDrive - CGU/corona/federais.csv")
+cod_uf <- read_csv2("C:/Users/User/OneDrive - CGU/corona/cod_uf.csv")
+
+
+```
+
+```{r, echo=FALSE,include=FALSE}
+## Scripts para tratamento dos dados
+aquisicoes_completo <- replace(aquisicoes_completo, is.na(aquisicoes_completo), 0)
+aquisicoes_completo$date <- ymd(aquisicoes_completo$data_inicio_ativ)
+aquisicoes_completo$intervalo <- aquisicoes_completo$date %--% dmy("08-06-2020") 
+aquisicoes_completo$intervalo <- aquisicoes_completo$intervalo / ddays(1)
+teste_data <- aquisicoes_completo %>% filter(intervalo<180)
+
+# DF geral (itens comparáveis)
+aquisicoes_compa <- aquisicoes_compa %>% group_by(ITEM_PADRONIZADO) %>% mutate(
+  z_valor = scale(as.numeric(PRECO_UNITARIO_PADRONIZADO)),
+  z_qtde = scale(as.numeric(QUANTIDADE_PADRONIZADA)))
+aquisicoes_compa <- replace(aquisicoes_compa, is.na(aquisicoes_compa), 0)
+aquisicoes_compa <- left_join(aquisicoes_compa,estados, by = c("UF" = "UF"))
+aquisicoes_compa <- aquisicoes_compa %>% select (-ibge7, -Nome_Municipio)
+aquisicoes_compa <- aquisicoes_compa %>% mutate(valor_total_padronizado = as.numeric(PRECO_UNITARIO_PADRONIZADO) * as.numeric(QUANTIDADE_PADRONIZADA))
+aquisicoes_compa <- aquisicoes_compa %>% mutate(contratante = paste(contratante, Municipio, sep=" - "))
+
+# DF geral (todos os itens)
+aquisicoes_completo <- left_join(aquisicoes_completo,estados, by = c("UF" = "UF"))
+aquisicoes_completo <- aquisicoes_completo %>% select (-ibge7, -Nome_Municipio)
+aquisicoes_completo <- aquisicoes_completo %>% mutate(valor_total_padronizado = as.numeric(PRECO_UNITARIO_PADRONIZADO) * as.numeric(QUANTIDADE_PADRONIZADA))
+
+# DF de aquisicoes por UF (para calcular os gastos per capita)
+aquisicoes_uf <- aquisicoes_completo %>% group_by(UF) %>% summarise (gastos_totais = sum(Valor_Total), cod_uf = mean(cod_uf))
+populacao_uf <- populacao %>% group_by(UF) %>% summarise (pop = sum(pop))
+populacao_uf$cod_uf <- populacao_uf$UF
+aquisicoes_uf <- left_join(aquisicoes_uf,populacao_uf, by = c("cod_uf" = "cod_uf"))
+aquisicoes_uf <- aquisicoes_uf %>% mutate(gastos_percapita = gastos_totais/pop)
+aquisicoes_uf <- left_join(aquisicoes_uf,casos, by = c("UF.x" = "estado"))
+aquisicoes_uf <- aquisicoes_uf %>% mutate(gastos_por_casos = gastos_totais/casosAcumulados)
+
+# DF de aquisicoes por UF apenas de itens comparáveis
+aquisicoes_uf1 <- aquisicoes_compa %>% group_by(UF) %>% summarise (gastos_totais = sum(Valor_Total), cod_uf = mean(cod_uf), z_medio = mean(z_qtde))
+aquisicoes_uf1 <- left_join(aquisicoes_uf1,populacao_uf, by = c("cod_uf" = "cod_uf"))
+
+
+
+```
+
+```{r, echo=FALSE,include=FALSE}
+# Scripts dos gráficos
+# Graficos de quantidades per capita
+alcool <- aquisicoes_compa %>% filter (ITEM_PADRONIZADO == "alcool") %>% filter(PRECO_UNITARIO_PADRONIZADO > 0)
+alcool <- alcool %>% group_by(UF) %>% summarise (preco_medio= mean(PRECO_UNITARIO_PADRONIZADO), quantidade = sum(QUANTIDADE_PADRONIZADA), cod_uf= mean(cod_uf))
+alcool <- left_join(alcool,populacao_uf,by = c("cod_uf" = "cod_uf"))
+alcool <- alcool %>% mutate (qtde_percapita = quantidade/pop)
+barras_item1 <- alcool %>% 
+  filter(!is.na(qtde_percapita)) %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),qtde_percapita), y=qtde_percapita)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Aquisições Per Capita (álcool)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Litros de Alcool adquiridos para cada habitante")
+
+luvas <- aquisicoes_compa %>% filter (ITEM_PADRONIZADO == "luva") %>% filter(PRECO_UNITARIO_PADRONIZADO > 0)
+luvas <- luvas %>% group_by(UF) %>% summarise (preco_medio= mean(PRECO_UNITARIO_PADRONIZADO), quantidade = sum(QUANTIDADE_PADRONIZADA), cod_uf= mean(cod_uf))
+luvas <- left_join(luvas,populacao_uf,by = c("cod_uf" = "cod_uf"))
+luvas <- luvas %>% mutate (qtde_percapita = quantidade/pop)
+barras_item2 <- luvas %>% 
+  filter(!is.na(qtde_percapita)) %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),qtde_percapita), y=qtde_percapita)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Aquisições Per Capita (luvas)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Pares de luvas adquiridos para cada habitante")
+avental <- aquisicoes_compa %>% filter (ITEM_PADRONIZADO == "avental") %>% filter(PRECO_UNITARIO_PADRONIZADO > 0)
+avental <- avental %>% group_by(UF) %>% summarise (preco_medio= mean(PRECO_UNITARIO_PADRONIZADO), quantidade = sum(QUANTIDADE_PADRONIZADA), cod_uf= mean(cod_uf))
+avental <- left_join(avental,populacao_uf,by = c("cod_uf" = "cod_uf"))
+avental <- avental %>% mutate (qtde_percapita = quantidade/pop)
+barras_item3 <- avental %>% 
+  filter(!is.na(qtde_percapita)) %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),qtde_percapita), y=qtde_percapita)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Aquisições Per Capita (avental)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Aventais adquiridos para cada habitante")
+macacao <- aquisicoes_compa %>% filter (ITEM_PADRONIZADO == "macacao") %>% filter(PRECO_UNITARIO_PADRONIZADO > 0)
+macacao <- macacao %>% group_by(UF) %>% summarise (preco_medio= mean(PRECO_UNITARIO_PADRONIZADO), quantidade = sum(QUANTIDADE_PADRONIZADA), cod_uf= mean(cod_uf))
+macacao <- left_join(macacao,populacao_uf,by = c("cod_uf" = "cod_uf"))
+macacao <- macacao %>% mutate (qtde_percapita = quantidade/pop)
+barras_item4 <- macacao %>% 
+  filter(!is.na(qtde_percapita)) %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),qtde_percapita), y=qtde_percapita)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Aquisições Per Capita (macacao)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Macacões adquiridos para cada habitante")
+mascaran95 <- aquisicoes_compa %>% filter (ITEM_PADRONIZADO == "mascara n95") %>% filter(PRECO_UNITARIO_PADRONIZADO > 0)
+mascaran95 <- mascaran95 %>% group_by(UF) %>% summarise (preco_medio= mean(PRECO_UNITARIO_PADRONIZADO), quantidade = sum(QUANTIDADE_PADRONIZADA), cod_uf= mean(cod_uf))
+mascaran95 <- left_join(mascaran95,populacao_uf,by = c("cod_uf" = "cod_uf"))
+mascaran95 <- mascaran95 %>% mutate (qtde_percapita = quantidade/pop)
+barras_item5 <- mascaran95 %>% 
+  filter(!is.na(qtde_percapita)) %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),qtde_percapita), y=qtde_percapita)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Aquisições Per Capita (mascara n95)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Máscaras N-95 adquiridos para cada habitante")
+mascara <- aquisicoes_compa %>% filter (ITEM_PADRONIZADO == "mascara") %>% filter(PRECO_UNITARIO_PADRONIZADO > 0)
+mascara <- mascara %>% group_by(UF) %>% summarise (preco_medio= mean(PRECO_UNITARIO_PADRONIZADO), quantidade = sum(QUANTIDADE_PADRONIZADA), cod_uf= mean(cod_uf))
+mascara <- left_join(mascara,populacao_uf,by = c("cod_uf" = "cod_uf"))
+mascara <- mascara %>% mutate (qtde_percapita = quantidade/pop)
+barras_item6 <- mascara %>% 
+  filter(!is.na(qtde_percapita)) %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),qtde_percapita), y=qtde_percapita)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Aquisições Per Capita (mascara)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Máscaras adquiridos para cada habitante")
+oculos <- aquisicoes_compa %>% filter (ITEM_PADRONIZADO == "oculos") %>% filter(PRECO_UNITARIO_PADRONIZADO > 0)
+oculos <- oculos %>% group_by(UF) %>% summarise (preco_medio= mean(PRECO_UNITARIO_PADRONIZADO), quantidade = sum(QUANTIDADE_PADRONIZADA), cod_uf= mean(cod_uf))
+oculos <- left_join(oculos,populacao_uf,by = c("cod_uf" = "cod_uf"))
+oculos <- oculos %>% mutate (qtde_percapita = quantidade/pop)
+barras_item7 <- oculos %>% 
+  filter(!is.na(qtde_percapita)) %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),qtde_percapita), y=qtde_percapita)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Aquisições Per Capita (oculos)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Óculos adquiridos para cada habitante")
+touca <- aquisicoes_compa %>% filter (ITEM_PADRONIZADO == "touca") %>% filter(PRECO_UNITARIO_PADRONIZADO > 0)
+touca <- touca %>% group_by(UF) %>% summarise (preco_medio= mean(PRECO_UNITARIO_PADRONIZADO), quantidade = sum(QUANTIDADE_PADRONIZADA), cod_uf= mean(cod_uf))
+touca <- left_join(touca,populacao_uf,by = c("cod_uf" = "cod_uf"))
+touca <- touca %>% mutate (qtde_percapita = quantidade/pop)
+barras_item8 <- touca %>% 
+  filter(!is.na(qtde_percapita)) %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),qtde_percapita), y=qtde_percapita)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Aquisições Per Capita (touca)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Toucas adquiridos para cada habitante")
+
+#Gráficos de boxplot dos preços unitários (agrupados)
+boxplot_epi<- aquisicoes_compa %>%
+  filter (ITEM_PADRONIZADO %in% c("alcool","mascara", "mascara n95", "oculos","touca", "avental","macacao","luva")) %>% 
+  filter (z_valor < 5) %>% 
+  filter (PRECO_UNITARIO_PADRONIZADO > 0) %>% 
+  ggplot( aes(x=ITEM_PADRONIZADO, y=z_valor, fill="steelblue3", popup=PRECO_UNITARIO_PADRONIZADO)) +
+  xlab("") +
+  geom_boxplot(fill="steelblue4") +
+  ylab("")+
+  theme(legend.position="none")+
+  geom_jitter(color="black", size=0.4, alpha=0.9)
+boxplot_epi1 <- ggplotly(boxplot_epi)
+boxplot_testes<- aquisicoes_compa %>%
+  filter (ITEM_PADRONIZADO %in% c("teste", "teste PCR")) %>% 
+  filter (z_valor < 5) %>% 
+  filter (PRECO_UNITARIO_PADRONIZADO > 0) %>% 
+  ggplot( aes(x=ITEM_PADRONIZADO, y=z_valor, fill="steelblue3", popup=PRECO_UNITARIO_PADRONIZADO)) +
+  xlab("") +
+  geom_boxplot(fill="steelblue4") +
+  ylab("")+
+  theme(legend.position="none")+
+  geom_jitter(color="black", size=0.4, alpha=0.9)
+boxplot_testes1 <- ggplotly(boxplot_testes)
+boxplot_equip<- aquisicoes_compa %>%
+  filter (ITEM_PADRONIZADO %in% c("respirador", "respirador transporte", "monitor", "desfibrilador", "cama")) %>% 
+  filter (z_valor < 50) %>% 
+  filter (PRECO_UNITARIO_PADRONIZADO > 0) %>% 
+  ggplot( aes(x=ITEM_PADRONIZADO, y=z_valor, fill="steelblue3", popup=PRECO_UNITARIO_PADRONIZADO)) +
+  xlab("") +
+  geom_boxplot(fill="steelblue4") +
+  ylab("")+
+  theme(legend.position="none")+
+  geom_jitter(color="black", size=0.4, alpha=0.9)
+boxplot_equip1 <- ggplotly(boxplot_equip)
+boxplot_equip2<- aquisicoes_compa %>%
+  filter (ITEM_PADRONIZADO %in% c("eletrocardiografo", "ultrassom", "oximetro", "termometro", "oximetro (portatil)")) %>% 
+  filter (z_valor < 50) %>% 
+  filter (PRECO_UNITARIO_PADRONIZADO > 0) %>% 
+  ggplot( aes(x=ITEM_PADRONIZADO, y=z_valor, fill="steelblue3", popup=PRECO_UNITARIO_PADRONIZADO)) +
+  xlab("") +
+  geom_boxplot(fill="steelblue4") +
+  ylab("")+
+  theme(legend.position="none")+
+  geom_jitter(color="black", size=0.4, alpha=0.9)
+boxplot_equip3 <- ggplotly(boxplot_equip2)
+
+boxplot_leitos<- aquisicoes_compa %>%
+  filter (ITEM_PADRONIZADO %in% c("leitos")) %>% 
+  filter (z_valor < 50) %>% 
+  filter (PRECO_UNITARIO_PADRONIZADO > 0) %>% 
+  ggplot( aes(x=ITEM_PADRONIZADO, y=z_valor, fill="steelblue3", popup=PRECO_UNITARIO_PADRONIZADO)) +
+  xlab("") +
+  geom_boxplot(fill="steelblue4") +
+  ylab("")+
+  theme(legend.position="none")+
+  geom_jitter(color="black", size=0.4, alpha=0.9)
+boxplot_leitos1 <- ggplotly(boxplot_leitos)
+
+#Graficos de boxplot dos preços unitários (por item) 
+boxplot_alcool <- aquisicoes_compa %>%
+  filter (ITEM_PADRONIZADO == "alcool") %>% 
+  filter (PRECO_UNITARIO_PADRONIZADO < 2000000) %>% 
+    filter (PRECO_UNITARIO_PADRONIZADO > 0) %>% 
+  ggplot(aes(x=UF, y=PRECO_UNITARIO_PADRONIZADO, fill=ITEM_PADRONIZADO, popup = contratante)) +
+  geom_boxplot(fill="steelblue4") +
+  xlab("") +
+  ylab("")+
+  theme(legend.position="none")+
+  geom_jitter(color="black", size=0.4, alpha=0.9)
+boxplot_alcool1 <- ggplotly(boxplot_alcool)
+
+boxplot_avental <- aquisicoes_compa %>%
+  filter (ITEM_PADRONIZADO == "avental") %>% 
+  filter (PRECO_UNITARIO_PADRONIZADO < 2000000) %>% 
+      filter (PRECO_UNITARIO_PADRONIZADO > 0) %>% 
+  ggplot(aes(x=UF, y=PRECO_UNITARIO_PADRONIZADO, fill=ITEM_PADRONIZADO, popup = contratante)) +
+  geom_boxplot(fill="steelblue4") +
+  xlab("") +
+  ylab("")+
+  theme(legend.position="none")+
+  geom_jitter(color="black", size=0.4, alpha=0.9)
+boxplot_avental1 <- ggplotly(boxplot_avental)
+
+boxplot_luva <- aquisicoes_compa %>%
+  filter (ITEM_PADRONIZADO == "luva") %>% 
+  filter (PRECO_UNITARIO_PADRONIZADO < 2000000) %>% 
+      filter (PRECO_UNITARIO_PADRONIZADO > 0) %>% 
+  ggplot(aes(x=UF, y=PRECO_UNITARIO_PADRONIZADO, fill=ITEM_PADRONIZADO, popup = contratante)) +
+  geom_boxplot(fill="steelblue4") +
+  xlab("") +
+  ylab("")+
+  theme(legend.position="none")+
+  geom_jitter(color="black", size=0.4, alpha=0.9)
+boxplot_luva1 <- ggplotly(boxplot_luva)
+
+boxplot_macacao <- aquisicoes_compa %>%
+  filter (ITEM_PADRONIZADO == "macacao") %>% 
+  filter (PRECO_UNITARIO_PADRONIZADO < 2000000) %>% 
+      filter (PRECO_UNITARIO_PADRONIZADO > 0) %>% 
+  ggplot(aes(x=UF, y=PRECO_UNITARIO_PADRONIZADO, fill=ITEM_PADRONIZADO, popup = contratante)) +
+  geom_boxplot(fill="steelblue4") +
+  xlab("") +
+  ylab("")+
+  theme(legend.position="none")+
+  geom_jitter(color="black", size=0.4, alpha=0.9)
+boxplot_macacao1 <- ggplotly(boxplot_macacao)
+
+boxplot_mascara <- aquisicoes_compa %>%
+  filter (ITEM_PADRONIZADO == "mascara") %>% 
+  filter (PRECO_UNITARIO_PADRONIZADO < 2000000) %>%
+      filter (PRECO_UNITARIO_PADRONIZADO > 0) %>% 
+  ggplot(aes(x=UF, y=PRECO_UNITARIO_PADRONIZADO, fill=ITEM_PADRONIZADO, popup = contratante)) +
+  geom_boxplot(fill="steelblue4") +
+  xlab("") +
+  ylab("")+
+  theme(legend.position="none")+
+  geom_jitter(color="black", size=0.4, alpha=0.9)
+boxplot_mascara1 <- ggplotly(boxplot_mascara)
+
+boxplot_mascaran95 <- aquisicoes_compa %>%
+  filter (ITEM_PADRONIZADO == "mascara n95") %>% 
+  filter (PRECO_UNITARIO_PADRONIZADO < 2000000) %>% 
+      filter (PRECO_UNITARIO_PADRONIZADO > 0) %>% 
+  ggplot(aes(x=UF, y=PRECO_UNITARIO_PADRONIZADO, fill=ITEM_PADRONIZADO, popup = contratante)) +
+  geom_boxplot(fill="steelblue4") +
+  xlab("") +
+  ylab("")+
+  theme(legend.position="none")+
+  geom_jitter(color="black", size=0.4, alpha=0.9)
+boxplot_mascaran951 <- ggplotly(boxplot_mascaran95)
+
+boxplot_oculos <- aquisicoes_compa %>%
+  filter (ITEM_PADRONIZADO == "oculos") %>% 
+  filter (PRECO_UNITARIO_PADRONIZADO < 2000000) %>% 
+      filter (PRECO_UNITARIO_PADRONIZADO > 0) %>% 
+  ggplot(aes(x=UF, y=PRECO_UNITARIO_PADRONIZADO, fill=ITEM_PADRONIZADO, popup = contratante)) +
+  geom_boxplot(fill="steelblue4") +
+  xlab("") +
+  ylab("")+
+  theme(legend.position="none")+
+  geom_jitter(color="black", size=0.4, alpha=0.9)
+boxplot_oculos1 <- ggplotly(boxplot_oculos)
+
+boxplot_touca <- aquisicoes_compa %>%
+  filter (ITEM_PADRONIZADO == "touca") %>% 
+  filter (PRECO_UNITARIO_PADRONIZADO < 2000000) %>% 
+      filter (PRECO_UNITARIO_PADRONIZADO > 0) %>% 
+  ggplot(aes(x=UF, y=PRECO_UNITARIO_PADRONIZADO, fill=ITEM_PADRONIZADO, popup = contratante)) +
+  geom_boxplot(fill="steelblue4") +
+  xlab("") +
+  ylab("")+
+  theme(legend.position="none")+
+  geom_jitter(color="black", size=0.4, alpha=0.9)
+boxplot_touca1 <- ggplotly(boxplot_touca)
+
+boxplot_teste <- aquisicoes_compa %>%
+  filter (ITEM_PADRONIZADO == "teste") %>% 
+  filter (PRECO_UNITARIO_PADRONIZADO < 2000000) %>% 
+      filter (PRECO_UNITARIO_PADRONIZADO > 0) %>% 
+  ggplot(aes(x=UF, y=PRECO_UNITARIO_PADRONIZADO, fill=ITEM_PADRONIZADO, popup = contratante)) +
+  geom_boxplot(fill="steelblue4") +
+  xlab("") +
+  ylab("")+
+  theme(legend.position="none")+
+  geom_jitter(color="black", size=0.4, alpha=0.9)
+boxplot_teste1 <- ggplotly(boxplot_teste)
+
+boxplot_testepcr <- aquisicoes_compa %>%
+  filter (ITEM_PADRONIZADO == "teste PCR") %>% 
+  filter (PRECO_UNITARIO_PADRONIZADO < 2000000) %>% 
+      filter (PRECO_UNITARIO_PADRONIZADO > 0) %>% 
+  ggplot(aes(x=UF, y=PRECO_UNITARIO_PADRONIZADO, fill=ITEM_PADRONIZADO, popup = contratante)) +
+  geom_boxplot(fill="steelblue4") +
+  xlab("") +
+  ylab("")+
+  theme(legend.position="none")+
+  geom_jitter(color="black", size=0.4, alpha=0.9)
+boxplot_testepcr1 <- ggplotly(boxplot_testepcr)
+
+boxplot_cama <- aquisicoes_compa %>%
+  filter (ITEM_PADRONIZADO == "cama") %>% 
+  filter (PRECO_UNITARIO_PADRONIZADO < 2000000) %>% 
+      filter (PRECO_UNITARIO_PADRONIZADO > 0) %>% 
+  ggplot(aes(x=UF, y=PRECO_UNITARIO_PADRONIZADO, fill=ITEM_PADRONIZADO, popup = contratante)) +
+  geom_boxplot(fill="steelblue4") +
+  xlab("") +
+  ylab("")+
+  theme(legend.position="none")+
+  geom_jitter(color="black", size=0.4, alpha=0.9)
+boxplot_cama1 <- ggplotly(boxplot_cama)
+
+boxplot_desfibrilador <- aquisicoes_compa %>%
+  filter (ITEM_PADRONIZADO == "desfibrilador") %>% 
+  filter (PRECO_UNITARIO_PADRONIZADO < 2000000) %>% 
+      filter (PRECO_UNITARIO_PADRONIZADO > 0) %>% 
+  ggplot(aes(x=UF, y=PRECO_UNITARIO_PADRONIZADO, fill=ITEM_PADRONIZADO, popup = contratante)) +
+  geom_boxplot(fill="steelblue4") +
+  xlab("") +
+  ylab("")+
+  theme(legend.position="none")+
+  geom_jitter(color="black", size=0.4, alpha=0.9)
+boxplot_desfibrilador1 <- ggplotly(boxplot_desfibrilador)
+
+boxplot_monitor <- aquisicoes_compa %>%
+  filter (ITEM_PADRONIZADO == "monitor") %>% 
+  filter (PRECO_UNITARIO_PADRONIZADO < 2000000) %>% 
+      filter (PRECO_UNITARIO_PADRONIZADO > 0) %>% 
+  ggplot(aes(x=UF, y=PRECO_UNITARIO_PADRONIZADO, fill=ITEM_PADRONIZADO, popup = contratante)) +
+  geom_boxplot(fill="steelblue4") +
+  xlab("") +
+  ylab("")+
+  theme(legend.position="none")+
+  geom_jitter(color="black", size=0.4, alpha=0.9)
+boxplot_monitor1 <- ggplotly(boxplot_monitor)
+
+boxplot_respirador <- aquisicoes_compa %>%
+  filter (ITEM_PADRONIZADO == "respirador") %>% 
+  filter (PRECO_UNITARIO_PADRONIZADO < 20000000) %>% 
+      filter (PRECO_UNITARIO_PADRONIZADO > 0) %>% 
+  ggplot(aes(x=UF, y=PRECO_UNITARIO_PADRONIZADO, fill=ITEM_PADRONIZADO, popup = contratante)) +
+  geom_boxplot(fill="steelblue4") +
+  xlab("") +
+  ylab("")+
+  theme(legend.position="none")+
+  geom_jitter(color="black", size=0.4, alpha=0.9)
+boxplot_respirador1 <- ggplotly(boxplot_respirador)
+
+boxplot_respiradortransporte <- aquisicoes_compa %>%
+  filter (ITEM_PADRONIZADO == "respirador transporte") %>% 
+      filter (PRECO_UNITARIO_PADRONIZADO > 0) %>% 
+  filter (PRECO_UNITARIO_PADRONIZADO < 20000000) %>% 
+  ggplot(aes(x=UF, y=PRECO_UNITARIO_PADRONIZADO, fill=ITEM_PADRONIZADO, popup = contratante)) +
+  geom_boxplot(fill="steelblue4") +
+  xlab("") +
+  ylab("")+
+  theme(legend.position="none")+
+  geom_jitter(color="black", size=0.4, alpha=0.9)
+boxplot_respiradortransporte1 <- ggplotly(boxplot_respiradortransporte)
+
+boxplot_leitos3 <- aquisicoes_compa %>%
+  filter (ITEM_PADRONIZADO == "leitos") %>% 
+  filter (PRECO_UNITARIO_PADRONIZADO < 2000000) %>% 
+      filter (PRECO_UNITARIO_PADRONIZADO > 0) %>% 
+  ggplot(aes(x=UF, y=PRECO_UNITARIO_PADRONIZADO, fill=ITEM_PADRONIZADO, popup = contratante)) +
+  geom_boxplot(fill="steelblue4") +
+  xlab("") +
+  ylab("")+
+  theme(legend.position="none")+
+  geom_jitter(color="black", size=0.4, alpha=0.9)
+boxplot_leitos4 <- ggplotly(boxplot_leitos3)
+
+## Gráficos de barras: Preços Unitários por item
+## alcool
+barras_medio1 <- alcool %>%
+  ggplot(aes(x=reorder(as.factor(UF.x),preco_medio), y=preco_medio)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Preços Médios (álcool)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Preço médio do litro de alcool")
+## luvas
+barras_medio2 <- luvas %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),preco_medio), y=preco_medio)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Preços Médios (luvas)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Preco médio do par de luvas")
+barras_medio3 <- avental %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),preco_medio), y=preco_medio)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Preços Médios (avental)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Preco médio do avental")
+
+barras_medio4 <- macacao %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),preco_medio), y=preco_medio)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Preços Médios (macacão)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Preco médio do macacão")
+
+barras_medio5 <- mascaran95 %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),preco_medio), y=preco_medio)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Preços Médios (máscara n-95)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Preco médio da máscara n-95")
+
+barras_medio6 <- mascara %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),preco_medio), y=preco_medio)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Preços Médios (máscara)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Preco médio da mascara")
+
+barras_medio7 <- oculos %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),preco_medio), y=preco_medio)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Preços Médios (óculos)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Preco médio do óculos")
+
+barras_medio8 <- touca %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),preco_medio), y=preco_medio)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Preços Médios (touca)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Preco médio da touca")
+
+barras_medio1a <- ggplotly(barras_medio1)
+barras_medio2a <- ggplotly(barras_medio2)
+barras_medio3a <- ggplotly(barras_medio3)
+barras_medio4a <- ggplotly(barras_medio4)
+barras_medio5a <- ggplotly(barras_medio5)
+barras_medio6a <- ggplotly(barras_medio6)
+barras_medio7a <- ggplotly(barras_medio7)
+barras_medio8a <- ggplotly(barras_medio8)
+
+
+# Graficos de quantidades per capita
+alcool <- aquisicoes_compa %>% filter (ITEM_PADRONIZADO == "alcool") %>% filter(PRECO_UNITARIO_PADRONIZADO > 0)
+alcool <- alcool %>% group_by(UF) %>% summarise (preco_medio= mean(PRECO_UNITARIO_PADRONIZADO), quantidade = sum(QUANTIDADE_PADRONIZADA), cod_uf= mean(cod_uf))
+alcool <- left_join(alcool,populacao_uf,by = c("cod_uf" = "cod_uf"))
+alcool <- alcool %>% mutate (qtde_percapita = quantidade/pop)
+barras_item1 <- alcool %>% 
+  filter(!is.na(qtde_percapita)) %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),qtde_percapita), y=qtde_percapita)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Aquisições Per Capita (álcool)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Litros de Alcool adquiridos para cada habitante")
+
+barras_item1 <- alcool %>% 
+  filter(!is.na(qtde_percapita)) %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),qtde_percapita), y=qtde_percapita)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Aquisições Per Capita (álcool)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Litros de Alcool adquiridos para cada habitante")
+
+luvas <- aquisicoes_compa %>% filter (ITEM_PADRONIZADO == "luva") %>% filter(PRECO_UNITARIO_PADRONIZADO > 0)
+luvas <- luvas %>% group_by(UF) %>% summarise (preco_medio= mean(PRECO_UNITARIO_PADRONIZADO), quantidade = sum(QUANTIDADE_PADRONIZADA), cod_uf= mean(cod_uf))
+luvas <- left_join(luvas,populacao_uf,by = c("cod_uf" = "cod_uf"))
+luvas <- luvas %>% mutate (qtde_percapita = quantidade/pop)
+barras_item2 <- luvas %>% 
+  filter(!is.na(qtde_percapita)) %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),qtde_percapita), y=qtde_percapita)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Aquisições Per Capita (luvas)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Pares de luvas adquiridos para cada habitante")
+
+avental <- aquisicoes_compa %>% filter (ITEM_PADRONIZADO == "avental") %>% filter(PRECO_UNITARIO_PADRONIZADO > 0)
+avental <- avental %>% group_by(UF) %>% summarise (preco_medio= mean(PRECO_UNITARIO_PADRONIZADO), quantidade = sum(QUANTIDADE_PADRONIZADA), cod_uf= mean(cod_uf))
+avental <- left_join(avental,populacao_uf,by = c("cod_uf" = "cod_uf"))
+avental <- avental %>% mutate (qtde_percapita = quantidade/pop)
+barras_item3 <- avental %>% 
+  filter(!is.na(qtde_percapita)) %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),qtde_percapita), y=qtde_percapita)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Aquisições Per Capita (avental)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Aventais adquiridos para cada habitante")
+
+macacao <- aquisicoes_compa %>% filter (ITEM_PADRONIZADO == "macacao") %>% filter(PRECO_UNITARIO_PADRONIZADO > 0)
+macacao <- macacao %>% group_by(UF) %>% summarise (preco_medio= mean(PRECO_UNITARIO_PADRONIZADO), quantidade = sum(QUANTIDADE_PADRONIZADA), cod_uf= mean(cod_uf))
+macacao <- left_join(macacao,populacao_uf,by = c("cod_uf" = "cod_uf"))
+macacao <- macacao %>% mutate (qtde_percapita = quantidade/pop)
+barras_item4 <- macacao %>% 
+  filter(!is.na(qtde_percapita)) %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),qtde_percapita), y=qtde_percapita)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Aquisições Per Capita (macacao)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Macacões adquiridos para cada habitante")
+
+mascaran95 <- aquisicoes_compa %>% filter (ITEM_PADRONIZADO == "mascara n95") %>% filter(PRECO_UNITARIO_PADRONIZADO > 0)
+mascaran95 <- mascaran95 %>% group_by(UF) %>% summarise (preco_medio= mean(PRECO_UNITARIO_PADRONIZADO), quantidade = sum(QUANTIDADE_PADRONIZADA), cod_uf= mean(cod_uf))
+mascaran95 <- left_join(mascaran95,populacao_uf,by = c("cod_uf" = "cod_uf"))
+mascaran95 <- mascaran95 %>% mutate (qtde_percapita = quantidade/pop)
+barras_item5 <- mascaran95 %>% 
+  filter(!is.na(qtde_percapita)) %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),qtde_percapita), y=qtde_percapita)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Aquisições Per Capita (mascara n95)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Máscaras N-95 adquiridos para cada habitante")
+
+mascara <- aquisicoes_compa %>% filter (ITEM_PADRONIZADO == "mascara") %>% filter(PRECO_UNITARIO_PADRONIZADO > 0)
+mascara <- mascara %>% group_by(UF) %>% summarise (preco_medio= mean(PRECO_UNITARIO_PADRONIZADO), quantidade = sum(QUANTIDADE_PADRONIZADA), cod_uf= mean(cod_uf))
+mascara <- left_join(mascara,populacao_uf,by = c("cod_uf" = "cod_uf"))
+mascara <- mascara %>% mutate (qtde_percapita = quantidade/pop)
+barras_item6 <- mascara %>% 
+  filter(!is.na(qtde_percapita)) %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),qtde_percapita), y=qtde_percapita)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Aquisições Per Capita (mascara)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Máscaras adquiridos para cada habitante")
+
+oculos <- aquisicoes_compa %>% filter (ITEM_PADRONIZADO == "oculos") %>% filter(PRECO_UNITARIO_PADRONIZADO > 0)
+oculos <- oculos %>% group_by(UF) %>% summarise (preco_medio= mean(PRECO_UNITARIO_PADRONIZADO), quantidade = sum(QUANTIDADE_PADRONIZADA), cod_uf= mean(cod_uf))
+oculos <- left_join(oculos,populacao_uf,by = c("cod_uf" = "cod_uf"))
+oculos <- oculos %>% mutate (qtde_percapita = quantidade/pop)
+barras_item7 <- oculos %>% 
+  filter(!is.na(qtde_percapita)) %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),qtde_percapita), y=qtde_percapita)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Aquisições Per Capita (oculos)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Óculos adquiridos para cada habitante")
+
+touca <- aquisicoes_compa %>% filter (ITEM_PADRONIZADO == "touca") %>% filter(PRECO_UNITARIO_PADRONIZADO > 0)
+touca <- touca %>% group_by(UF) %>% summarise (preco_medio= mean(PRECO_UNITARIO_PADRONIZADO), quantidade = sum(QUANTIDADE_PADRONIZADA), cod_uf= mean(cod_uf))
+touca <- left_join(touca,populacao_uf,by = c("cod_uf" = "cod_uf"))
+touca <- touca %>% mutate (qtde_percapita = quantidade/pop)
+barras_item8 <- touca %>% 
+  filter(!is.na(qtde_percapita)) %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),qtde_percapita), y=qtde_percapita)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Aquisições Per Capita (touca)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Toucas adquiridos para cada habitante")
+
+
+# Comparação Aquisições Locais x Aquisições Federais
+alcool2 <- alcool %>% select(UF.x, quantidade)
+alcool2$tipo_aquisicao <- "Aquisição Local"
+alcool3 <- federais %>% filter(item == "alcool") %>% select(-item)
+alcool3$tipo_aquisicao <- "Aquisição Ministério da Saúde"
+alcool4 <- bind_rows(alcool2,alcool3)
+alcool5 <- left_join(alcool4,cod_uf,by = c("UF.x" = "UF"))
+alcool5 <- left_join(alcool5,populacao_uf,by = c("cod_uf" = "cod_uf"))
+alcool5 <- alcool5 %>% mutate (qtde_percapita = quantidade/pop)
+rm(alcool2,alcool3,alcool4)
+barras_comp1 <- alcool5 %>%
+  filter(!is.na(qtde_percapita)) %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),qtde_percapita), y=qtde_percapita, fill=tipo_aquisicao, popup = quantidade)) +
+  geom_bar(stat="identity") +
+  coord_flip() +
+  theme_ipsum() +
+  scale_fill_viridis(discrete=TRUE, name="") +
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="rigth") +
+  xlab("") +
+  ylab("Litros de Alcool por habitante")
+
+luvas2 <- luvas %>% select(UF.x, quantidade)
+luvas2$tipo_aquisicao <- "Aquisição Local"
+luvas3 <- federais %>% filter(item == "luva") %>% select(-item)
+luvas3$tipo_aquisicao <- "Aquisição Ministério da Saúde"
+luvas4 <- bind_rows(luvas2,luvas3)
+luvas5 <- left_join(luvas4,cod_uf,by = c("UF.x" = "UF"))
+luvas5 <- left_join(luvas5,populacao_uf,by = c("cod_uf" = "cod_uf"))
+luvas5 <- luvas5 %>% mutate (qtde_percapita = quantidade/pop)
+rm(luvas2,luvas3,luvas4)
+barras_comp2 <- luvas5 %>%
+  filter(!is.na(qtde_percapita)) %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),qtde_percapita), y=qtde_percapita, fill=tipo_aquisicao, popup = quantidade)) +
+  geom_bar(stat="identity") +
+  coord_flip() +
+  theme_ipsum() +
+  scale_fill_viridis(discrete=TRUE, name="") +
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="rigth") +
+  xlab("") +
+  ylab("Pares de luvas por habitante")
+
+avental2 <- avental %>% select(UF.x, quantidade)
+avental2$tipo_aquisicao <- "Aquisição Local"
+avental3 <- federais %>% filter(item == "avental") %>% select(-item)
+avental3$tipo_aquisicao <- "Aquisição Ministério da Saúde"
+avental4 <- bind_rows(avental2,avental3)
+avental5 <- left_join(avental4,cod_uf,by = c("UF.x" = "UF"))
+avental5 <- left_join(avental5,populacao_uf,by = c("cod_uf" = "cod_uf"))
+avental5 <- avental5 %>% mutate (qtde_percapita = quantidade/pop)
+rm(avental2,avental3,avental4)
+barras_comp3 <- avental5 %>%
+  filter(!is.na(qtde_percapita)) %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),qtde_percapita), y=qtde_percapita, fill=tipo_aquisicao, popup = quantidade)) +
+  geom_bar(stat="identity") +
+  coord_flip() +
+  theme_ipsum() +
+  scale_fill_viridis(discrete=TRUE, name="") +
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="rigth") +
+  xlab("") +
+  ylab("Aventais por habitante")
+
+
+respiradores <- aquisicoes_compa %>% filter (ITEM_PADRONIZADO == "respirador") %>% filter(PRECO_UNITARIO_PADRONIZADO > 0)
+respiradores <- respiradores %>% group_by(UF) %>% summarise (preco_medio= mean(PRECO_UNITARIO_PADRONIZADO), quantidade = sum(QUANTIDADE_PADRONIZADA), cod_uf= mean(cod_uf))
+respiradores <- left_join(respiradores,populacao_uf,by = c("cod_uf" = "cod_uf"))
+respiradores <- respiradores %>% mutate (qtde_percapita = quantidade/pop)
+barras_respiradores <- respiradores %>% 
+  filter(!is.na(qtde_percapita)) %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),qtde_percapita), y=qtde_percapita)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Aquisições Per Capita (respiradores)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Respiradores adquiridos para cada habitante")
+
+respiradores2 <- respiradores %>% select(UF.x, quantidade)
+respiradores2$tipo_aquisicao <- "Aquisição Local"
+respiradores3 <- federais %>% filter(item == "respirador") %>% select(-item)
+respiradores3$tipo_aquisicao <- "Aquisição Ministério da Saúde"
+respiradores4 <- bind_rows(respiradores2,respiradores3)
+respiradores5 <- left_join(respiradores4,cod_uf,by = c("UF.x" = "UF"))
+respiradores5 <- left_join(respiradores5,populacao_uf,by = c("cod_uf" = "cod_uf"))
+respiradores5 <- respiradores5 %>% mutate (qtde_percapita = quantidade/pop)
+rm(respiradores2,respiradores3,respiradores4)
+barras_comp4 <- respiradores5 %>%
+  filter(!is.na(qtde_percapita)) %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),qtde_percapita), y=qtde_percapita, fill=tipo_aquisicao, popup = quantidade)) +
+  geom_bar(stat="identity") +
+  coord_flip() +
+  theme_ipsum() +
+  scale_fill_viridis(discrete=TRUE, name="") +
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="rigth") +
+  xlab("") +
+  ylab("Respiradores por habitante")
+
+mascaran952 <- mascaran95 %>% select(UF.x, quantidade)
+mascaran952$tipo_aquisicao <- "Aquisição Local"
+mascaran953 <- federais %>% filter(item == "mascara n95") %>% select(-item)
+mascaran953$tipo_aquisicao <- "Aquisição Ministério da Saúde"
+mascaran954 <- bind_rows(mascaran952,mascaran953)
+mascaran955 <- left_join(mascaran954,cod_uf,by = c("UF.x" = "UF"))
+mascaran955 <- left_join(mascaran955,populacao_uf,by = c("cod_uf" = "cod_uf"))
+mascaran955 <- mascaran955 %>% mutate (qtde_percapita = quantidade/pop)
+rm(mascaran952,mascaran953,mascaran954)
+barras_comp5 <- mascaran955 %>%
+  filter(!is.na(qtde_percapita)) %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),qtde_percapita), y=qtde_percapita, fill=tipo_aquisicao, popup = quantidade)) +
+  geom_bar(stat="identity") +
+  coord_flip() +
+  theme_ipsum() +
+  scale_fill_viridis(discrete=TRUE, name="") +
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="rigth") +
+  xlab("") +
+  ylab("Máscaras n-95 por habitante")
+
+mascara2 <- mascara %>% select(UF.x, quantidade)
+mascara2$tipo_aquisicao <- "Aquisição Local"
+mascara3 <- federais %>% filter(item == "mascara") %>% select(-item)
+mascara3$tipo_aquisicao <- "Aquisição Ministério da Saúde"
+mascara4 <- bind_rows(mascara2,mascara3)
+mascara5 <- left_join(mascara4,cod_uf,by = c("UF.x" = "UF"))
+mascara5 <- left_join(mascara5,populacao_uf,by = c("cod_uf" = "cod_uf"))
+mascara5 <- mascara5 %>% mutate (qtde_percapita = quantidade/pop)
+rm(mascara2,mascara3,mascara4)
+barras_comp6 <- mascara5 %>%
+  filter(!is.na(qtde_percapita)) %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),qtde_percapita), y=qtde_percapita, fill=tipo_aquisicao, popup = quantidade)) +
+  geom_bar(stat="identity") +
+  coord_flip() +
+  theme_ipsum() +
+  scale_fill_viridis(discrete=TRUE, name="") +
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="rigth") +
+  xlab("") +
+  ylab("Máscaras por habitante")
+
+oculos2 <- oculos %>% select(UF.x, quantidade)
+oculos2$tipo_aquisicao <- "Aquisição Local"
+oculos3 <- federais %>% filter(item == "oculos") %>% select(-item)
+oculos3$tipo_aquisicao <- "Aquisição Ministério da Saúde"
+oculos4 <- bind_rows(oculos2,oculos3)
+oculos5 <- left_join(oculos4,cod_uf,by = c("UF.x" = "UF"))
+oculos5 <- left_join(oculos5,populacao_uf,by = c("cod_uf" = "cod_uf"))
+oculos5 <- oculos5 %>% mutate (qtde_percapita = quantidade/pop)
+rm(oculos2,oculos3,oculos4)
+barras_comp7 <- oculos5 %>%
+  filter(!is.na(qtde_percapita)) %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),qtde_percapita), y=qtde_percapita, fill=tipo_aquisicao, popup = quantidade)) +
+  geom_bar(stat="identity") +
+  coord_flip() +
+  theme_ipsum() +
+  scale_fill_viridis(discrete=TRUE, name="") +
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="rigth") +
+  xlab("") +
+  ylab("Óculos por habitante")
+
+touca2 <- touca %>% select(UF.x, quantidade)
+touca2$tipo_aquisicao <- "Aquisição Local"
+touca3 <- federais %>% filter(item == "touca") %>% select(-item)
+touca3$tipo_aquisicao <- "Aquisição Ministério da Saúde"
+touca4 <- bind_rows(touca2,touca3)
+touca5 <- left_join(touca4,cod_uf,by = c("UF.x" = "UF"))
+touca5 <- left_join(touca5,populacao_uf,by = c("cod_uf" = "cod_uf"))
+touca5 <- touca5 %>% mutate (qtde_percapita = quantidade/pop)
+rm(touca2,touca3,touca4)
+barras_comp8 <- touca5 %>%
+  filter(!is.na(qtde_percapita)) %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),qtde_percapita), y=qtde_percapita, fill=tipo_aquisicao, popup = quantidade)) +
+  geom_bar(stat="identity") +
+  coord_flip() +
+  theme_ipsum() +
+  scale_fill_viridis(discrete=TRUE, name="") +
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="rigth") +
+  xlab("") +
+  ylab("Toucas por habitante")
+
+
+# Graficos de preços médios
+## alcool
+barras_medio1 <- alcool %>%
+  ggplot(aes(x=reorder(as.factor(UF.x),preco_medio), y=preco_medio)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Preços Médios (álcool)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Preço médio do litro de alcool")
+## luvas
+barras_medio2 <- luvas %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),preco_medio), y=preco_medio)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Preços Médios (luvas)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Preco médio do par de luvas")
+barras_medio3 <- avental %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),preco_medio), y=preco_medio)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Preços Médios (avental)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Preco médio do avental")
+
+barras_medio4 <- macacao %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),preco_medio), y=preco_medio)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Preços Médios (macacão)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Preco médio do macacão")
+
+barras_medio5 <- mascaran95 %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),preco_medio), y=preco_medio)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Preços Médios (máscara n-95)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Preco médio da máscara n-95")
+
+barras_medio6 <- mascara %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),preco_medio), y=preco_medio)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Preços Médios (máscara)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Preco médio da mascara")
+
+barras_medio7 <- oculos %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),preco_medio), y=preco_medio)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Preços Médios (óculos)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Preco médio do óculos")
+
+barras_medio8 <- touca %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),preco_medio), y=preco_medio)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Preços Médios (touca)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Preco médio da touca")
+
+barras_item1a <- ggplotly(barras_item1)
+barras_item2a <- ggplotly(barras_item2)
+barras_item3a <- ggplotly(barras_item3)
+barras_item4a <- ggplotly(barras_item4)
+barras_item5a <- ggplotly(barras_item5)
+barras_item6a <- ggplotly(barras_item6)
+barras_item7a <- ggplotly(barras_item7)
+barras_item8a <- ggplotly(barras_item8)
+
+barras_medio1a <- ggplotly(barras_medio1)
+barras_medio2a <- ggplotly(barras_medio2)
+barras_medio3a <- ggplotly(barras_medio3)
+barras_medio4a <- ggplotly(barras_medio4)
+barras_medio5a <- ggplotly(barras_medio5)
+barras_medio6a <- ggplotly(barras_medio6)
+barras_medio7a <- ggplotly(barras_medio7)
+barras_medio8a <- ggplotly(barras_medio8)
+
+barras_comp1a <- ggplotly(barras_comp1)
+barras_comp2a <- ggplotly(barras_comp2)
+barras_comp3a <- ggplotly(barras_comp3)
+barras_respiradoresa <- ggplotly(barras_respiradores)
+barras_comp4a <- ggplotly(barras_comp4)
+barras_comp5a <- ggplotly(barras_comp5)
+barras_comp6a <- ggplotly(barras_comp6)
+barras_comp7a <- ggplotly(barras_comp7)
+barras_comp8a <- ggplotly(barras_comp8)
+
+fornecedores <- aquisicoes_compa %>% mutate(fornecedor = paste(Favorecido, CNPJ, sep=" - "))
+fornecedores <- fornecedores %>% group_by(fornecedor) %>% summarise (Z_media = mean(z_valor), valor = sum(valor_total_padronizado))
+fornecedores <- fornecedores %>% filter (valor>0)
+fornecedores <- fornecedores %>% filter(!is.na(fornecedor)) 
+fornecedores <- fornecedores %>% filter(fornecedor != "NA - NA")
+
+fornecedores1 <- aquisicoes_completo %>% mutate(fornecedor = paste(Favorecido, CNPJ, sep=" - "))
+fornecedores1 <- fornecedores1 %>% group_by(fornecedor) %>% summarise (valor = sum(Valor_Total), porte=mean(porte), capital_social = mean(capital_social))
+fornecedores1 <- fornecedores1 %>% filter (valor>0)
+fornecedores1 <- fornecedores1 %>% filter(!is.na(fornecedor))
+fornecedores1 <- fornecedores1 %>% filter(fornecedor != "NA - NA")
+
+barras_fornecedor1 <- fornecedores %>% filter(valor>1000000) %>% 
+  ggplot(aes(x=reorder(as.factor(fornecedor),-Z_media),y=Z_media, color = fornecedor))+
+  geom_bar(stat = "identity")+
+  ggtitle("Score padrão médio, por fornecedor (acima de R$ 1 milhão)")+
+  theme(panel.grid = element_line(colour = "transparent"),
+        panel.background = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        legend.position = "none")+
+  xlab("Fornecedor") +
+  ylab("Score Médio")
+barras_fornecedor2 <- ggplotly(barras_fornecedor1)
+
+barras_fornecedor3 <- fornecedores1 %>% filter(valor>10000000) %>% 
+  ggplot(aes(x=reorder(as.factor(fornecedor),-valor),y=valor, color = fornecedor))+
+  geom_bar(stat = "identity")+
+  ggtitle("Valor total dos contratos, por fornecedor (acima de R$ 10 milhões)")+
+  theme(panel.grid = element_line(colour = "transparent"),
+        panel.background = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        legend.position = "none")+
+  xlab("Fornecedor") +
+  ylab("Valor Total")
+barras_fornecedor4 <- ggplotly(barras_fornecedor3)
+
+# Graficos de barras (contratantes)
+contratantes <- aquisicoes_compa %>% mutate(contratante = paste(contratante, UF, sep=" - "))
+contratantes <- contratantes %>% group_by(contratante) %>% summarise (Z_media = mean(z_valor), valor_total = sum(valor_total_padronizado))
+contratantes <- contratantes %>% filter (valor_total>0)
+contratantes <- contratantes %>% filter(!is.na(contratante))
+contratantes <- contratantes %>% filter(contratante != "NA - NA")
+
+contratantes1 <- aquisicoes_completo %>% mutate(contratante = paste(contratante, UF, sep=" - "))
+contratantes1 <- contratantes1 %>% group_by(contratante) %>% summarise (valor = sum(Valor_Total))
+contratantes1 <- contratantes1 %>% filter (valor>0)
+contratantes1 <- contratantes1 %>% filter(!is.na(contratante))
+contratantes1 <- contratantes1 %>% filter(contratante != "NA - NA")
+
+barras_contratante1 <- contratantes %>% filter(valor_total >1000000) %>% 
+  ggplot(aes(x=reorder(as.factor(contratante),-Z_media),y=Z_media, color = contratante))+
+  geom_bar(stat = "identity")+
+  ggtitle("Score padrão médio, por contratante (acima de R$ 1 milhão)")+
+  theme(panel.grid = element_line(colour = "transparent"),
+        panel.background = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        legend.position = "none")+
+  xlab("Contratante") +
+  ylab("Score Médio")
+barras_contratante2 <- ggplotly(barras_contratante1)
+
+barras_contratante3 <- contratantes1 %>% filter(valor >10000000) %>% 
+  ggplot(aes(x=reorder(as.factor(contratante),-valor),y=valor, color = contratante))+
+  geom_bar(stat = "identity")+
+  ggtitle("Valor total dos contratos, por contratante (acima de R$ 10 milhões)")+
+  theme(panel.grid = element_line(colour = "transparent"),
+        panel.background = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        legend.position = "none")+
+  xlab("Contratante") +
+  ylab("Valor Total")
+barras_contratante4 <- ggplotly(barras_contratante3)
+
+```
+
+```{echo=FALSE,include=FALSE}
+# MAPAS
+
+# Mapa - Gastos Per Capita
+mapa1 <- get_brmap("State") %>%
+  left_join(aquisicoes_uf, c("State" = "cod_uf")) %>%
+  ggplot() +
+  geom_sf(aes(fill = gastos_percapita),
+          colour = "gray") +
+  scale_fill_viridis_c(option = 9, name = "Gastos Per Capita (R$)") +
+  ggtitle("Gastos com COVID-19 para cada habitante")+
+  theme(panel.grid = element_line(colour = "transparent"),
+        panel.background = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank())
+mapa3 <- ggplotly(mapa1)
+saveWidget(mapa3, file=paste0("mapa1.html"))
+
+# Mapa - Gastos por casos
+mapa5 <- get_brmap("State") %>%
+  left_join(aquisicoes_uf, c("State" = "cod_uf")) %>%
+  ggplot() +
+  geom_sf(aes(fill = gastos_por_casos),
+          colour = "gray") +
+  scale_fill_viridis_c(option = 9, name = "R$ gasto para cada caso") +
+  ggtitle("Proporção entre valores gastos e casos de Covid-19 registrados")+
+  theme(panel.grid = element_line(colour = "transparent"),
+        panel.background = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank())
+mapa5
+mapa6 <- ggplotly(mapa5)
+mapa6
+saveWidget(mapa6, file=paste0("mapa3.html"))
+
+# Mapa - score medio
+mapa4 <- get_brmap("State") %>%
+  left_join(aquisicoes_uf1, c("State" = "cod_uf")) %>%
+  ggplot(popup=UF) +
+  geom_sf(aes(fill = z_medio),
+          colour = "gray") +
+  scale_fill_viridis_c(option = 9, name = "Score Médio") +
+  ggtitle("Média dos 'escores padrão' dos preços unitários em cada UF")+
+  theme(panel.grid = element_line(colour = "transparent"),
+        panel.background = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank())
+mapa4
+mapa2 <- ggplotly(mapa4)
+mapa2
+saveWidget(mapa2, file=paste0("mapa2.html"))
+```
+
+```{r,include=FALSE}
+## Gráficos por casos
+
+alcool <- left_join(alcool,casos,by = c("UF.x" = "estado"))
+alcool <- alcool %>% mutate (qtde_porcasos = quantidade/casosAcumulados)
+barras_casos1 <- alcool %>% 
+  filter(!is.na(qtde_porcasos)) %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),qtde_porcasos), y=qtde_porcasos)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Aquisições Por Casos (álcool)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Litros de Alcool adquiridos para cada casos confirmado")
+barras_casos1 <- ggplotly(barras_casos1)
+
+
+luvas <- left_join(luvas,casos,by = c("UF.x" = "estado"))
+luvas <- luvas %>% mutate (qtde_porcasos = quantidade/casosAcumulados)
+barras_casos2 <- luvas %>% 
+  filter(!is.na(qtde_porcasos)) %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),qtde_porcasos), y=qtde_porcasos)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Aquisições Por Casos (luvas)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Luvas adquiridas para cada casos confirmado")
+barras_casos2 <- ggplotly(barras_casos2)
+
+avental <- left_join(avental,casos,by = c("UF.x" = "estado"))
+avental <- avental %>% mutate (qtde_porcasos = quantidade/casosAcumulados)
+barras_casos3 <- avental %>% 
+  filter(!is.na(qtde_porcasos)) %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),qtde_porcasos), y=qtde_porcasos)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Aquisições Por Casos (aventais)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Aventais adquiridos para cada casos confirmado")
+barras_casos3 <- ggplotly(barras_casos3)
+
+macacao <- left_join(macacao,casos,by = c("UF.x" = "estado"))
+macacao <- macacao %>% mutate (qtde_porcasos = quantidade/casosAcumulados)
+barras_casos4 <- macacao %>% 
+  filter(!is.na(qtde_porcasos)) %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),qtde_porcasos), y=qtde_porcasos)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Aquisições Por Casos (macacão)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Macacões adquiridos para cada casos confirmado")
+barras_casos4 <- ggplotly(barras_casos4)
+
+mascara <- left_join(mascara,casos,by = c("UF.x" = "estado"))
+mascara <- mascara %>% mutate (qtde_porcasos = quantidade/casosAcumulados)
+barras_casos5 <- mascara %>% 
+  filter(!is.na(qtde_porcasos)) %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),qtde_porcasos), y=qtde_porcasos)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Aquisições Por Casos (máscaras)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Máscaras adquiridas para cada casos confirmado")
+barras_casos5 <- ggplotly(barras_casos5)
+
+mascaran95 <- left_join(mascaran95,casos,by = c("UF.x" = "estado"))
+mascaran95 <- mascaran95 %>% mutate (qtde_porcasos = quantidade/casosAcumulados)
+barras_casos6 <- mascaran95 %>% 
+  filter(!is.na(qtde_porcasos)) %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),qtde_porcasos), y=qtde_porcasos)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Aquisições Por Casos (máscaras n95)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Máscaras n95 adquiridas para cada casos confirmado")
+barras_casos6 <- ggplotly(barras_casos6)
+
+oculos <- left_join(oculos,casos,by = c("UF.x" = "estado"))
+oculos <- oculos %>% mutate (qtde_porcasos = quantidade/casosAcumulados)
+barras_casos7 <- oculos %>% 
+  filter(!is.na(qtde_porcasos)) %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),qtde_porcasos), y=qtde_porcasos)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Aquisições Por Casos (óculos)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Óculos n95 adquiridos para cada casos confirmado")
+barras_casos7 <- ggplotly(barras_casos7)
+
+touca <- left_join(touca,casos,by = c("UF.x" = "estado"))
+touca <- touca %>% mutate (qtde_porcasos = quantidade/casosAcumulados)
+barras_casos8 <- touca %>% 
+  filter(!is.na(qtde_porcasos)) %>% 
+  ggplot(aes(x=reorder(as.factor(UF.x),qtde_porcasos), y=qtde_porcasos)) +
+  geom_bar(stat="identity", fill="steelblue4") +
+  coord_flip() +
+  theme_ipsum() +
+  ggtitle("Aquisições Por Casos (toucas)")+
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position="none") +
+  xlab("") +
+  ylab("Toucas n95 adquiridos para cada casos confirmado")
+barras_casos8 <- ggplotly(barras_casos8)
+
+```
+
+Essa página contém análises sobre os dados coletados e divulgados pela Controladoria-Geral da União (CGU) acerca de contratações realizadas pelos entes federativos (União, Estados e Municípios) para o enfrentamento da COVID-19.  
+
+Os dados utilizados nessa análise em constante atualização e disponíveis 
+[AQUI](https://github.com/rodrigoeloy/CGU/raw/master/piloto0806.xlsx).   
+
+As análises foram realizadas na linguagem R e essa página foi elaborada com o RMarkdown. 
+
+Atualmente, são considerados nessas análises `r nrow(aquisicoes_completo)` registros de contratações relacionadas ao enfrentamento da COVID-19, alcançando o montante de R$ `r sum(aquisicoes_completo$Valor_Total)/1000000000` bilhões.  
+
+Desse total, R$ `r sum(aquisicoes_compa$Valor_Total)/1000000000` bilhões (`r ((sum(aquisicoes_compa$Valor_Total)/1000000000) / (sum(aquisicoes_completo$Valor_Total)/1000000000))*100` %) são referentes aos aqui denominados "itens padronizáveis", que são aqueles objetos contratados em larga escala para o enfrentamento da COVID e que podem ser comparados entre si, tais como álcool em gel, máscaras e ventiladores mecânicos (respiradores).  
+
+As análises estão divididas em 5 partes. São elas:
+
+* Preços
+* Quantidades
+* Contratantes
+* Fornecedores
+* Estimativas e Projeções  
+
+No início de cada parte consta uma introdução sobre os objetivos das análises contidas naquela seção, bem como os principais conceitos, metodologias e limitaçoes conhecidas. Assim como ocorre com o volume de dados coletados, as análises aqui contidas são dinâmicas e atualizadas regularmente.
+
+***
+
+# {.tabset .tabset-fade .tabset-pills} 
+![](C:/Users/User/OneDrive - CGU/corona/HTML/cabecalho3.jpg)
+
+## INTRODUÇÃO
+Os gráficos, tabelas e mapas dessa seção indicam as variações dos preços unitários dos itens comparáveis. Para ilustrar as variações de preços, foram calculadas medidas de posição (média, mediana e quartis) para cada item. Tais medidas são apresentadas nessa seção em gráficos de boxplot.  
+
+Em algumas análises nessa seção, optou-se pela padronização dos preços unitários (escore padrão), de modo que é possível comparar, em uma mesma escala, as variações de preços de itens diferentes. Com o escore padrão, é possível comparar, por exemplo, a variação dos preços dos aventais (geralmente inferior a R$ 20,00) com a variação dos preços dos desfibriladores (geralmente superior a R$ 20.000,00)  
+
+Com base nesses conceitos, as variações dos preços unitários estão representadas por item (considerando o total de registros daqueles itens em todo o país) e por UF. Tambem consta nessa seção um mapa do Brasil sobre os scores padrão médio calculado para cada UF.   
+
+Para mais informações sobre as medidas de posição: [LINK](https://pt.wikipedia.org/wiki/Estatística_descritiva)  
+
+Para mais informações sobre os gráficos de boxplot: [LINK](https://pt.wikipedia.org/wiki/Diagrama_de_caixa)  
+
+Para mais informações sobre o "escore padrão": [LINK](https://en.wikipedia.org/wiki/Standard_score)  
+
+## POR ITEM {.tabset}
+
+O conjuto de gráficos abaixo indicam as variações dos preços unitários dos itens comparáveis. Cada ponto do gráfico representa uma aquisição. Os registros localizados dentro das "caixas" consistem naqueles localizados entre o 1º e o 3º quartil, ou seja, são aqueles que apresentam pouca variação relativa. Quanto mais distante das "caixas" maior é a diferença do preço praticado em relação aos demais registros do mesmo item. Tecnicamente, são considerados "outliers" aqueles registros superiores a 1,5 vezes a distância interquartil (diferença entre o primeiro e o terceiro quartil). Para ilustrar itens diferentes no mesmo gráfico, optou-se pela padronização dos preços unitários (score padrão). Abaixo de cada gráfico há a indicação das medidas de posição para cada item (quantidade total adquirida, quantidade de registros de aquisições, 1º quartil, média, mediana e 3º quartil).  
+
+Os itens padronizaveis foram divididos em 5 categorias. São elas:
+
+* Equipamentos de Proteção individual (EPI): álcool, aventais, luvas, macacão, máscara cirúrgica, máscara N-95, óculos de proteção e touca;
+* Testes para Diagnóstico: Testes Rápidos e Testes PCR
+* Equipamentos de UTI: Ventilador (respirador), ventilador de transporte, monitor, desfibrilador (cardioversor) e cama hospitalar;
+* Equipamentos para diagnóstico: Eletrocardiógrafo, Ultrassom, Oxímetro e Termômetro
+* Leitos: Locação de leitos de UTI  
+
+### EPI
+
+```{r, echo=FALSE}
+boxplot_epi1
+```
+![](C:/Users/User/OneDrive - CGU/corona/HTML/quadro1.jpg)
+
+### Testes para Diagnóstico
+
+```{r, echo=FALSE}
+boxplot_testes1
+```
+![](C:/Users/User/OneDrive - CGU/corona/HTML/quadro2.jpg)
+
+### Equipamentos de UTI
+
+```{r, echo=FALSE}
+boxplot_equip1
+```
+![](C:/Users/User/OneDrive - CGU/corona/HTML/quadro3.jpg)
+
+### Equipamentos para Diagnóstico
+
+```{r, echo=FALSE}
+boxplot_equip3
+```
+![](C:/Users/User/OneDrive - CGU/corona/HTML/quadro4.jpg)
+
+### Leitos de UTI
+
+```{r, echo=FALSE}
+boxplot_leitos1
+```
+![](C:/Users/User/OneDrive - CGU/corona/HTML/quadro5.jpg)
+
+## POR UF {.tabset}
+
+O conjuto de gráficos dessa seção representam as variações dos preços unitários dos itens comparáveis. Nesse caso, os preços são apresentados por UF, possibilitando a análise regionalizada para cada item.
+
+### Álcool
+```{r, echo=FALSE}
+boxplot_alcool1
+```
+
+### Aventais
+```{r, echo=FALSE}
+boxplot_avental1
+```
+
+### Luvas
+```{r, echo=FALSE}
+boxplot_luva1
+```
+
+### Macacão
+```{r, echo=FALSE}
+boxplot_macacao1
+```
+
+### Máscara Cirúrgica
+```{r, echo=FALSE}
+boxplot_mascara1
+```
+
+### Máscara N-95
+```{r, echo=FALSE}
+boxplot_mascaran951
+```
+
+### Óculos
+```{r, echo=FALSE}
+boxplot_oculos1
+```
+
+### Touca
+```{r, echo=FALSE}
+boxplot_touca1
+```
+
+### Teste Rápido
+```{r, echo=FALSE}
+boxplot_teste1
+```
+
+### Teste PCR
+```{r, echo=FALSE}
+boxplot_testepcr1
+```
+
+### Desfibrilador
+```{r, echo=FALSE}
+boxplot_desfibrilador1
+```
+
+### Monitor
+```{r, echo=FALSE}
+boxplot_monitor1
+```
+
+### Respirador
+```{r, echo=FALSE}
+boxplot_respirador1
+```
+
+### Respirador de Transporte
+```{r, echo=FALSE}
+boxplot_respiradortransporte1
+```
+
+### Leitos de UTI
+```{r, echo=FALSE}
+boxplot_leitos4
+```
+
+# 
+
+***
+# {.tabset .tabset-fade .tabset-pills} 
+![](C:/Users/User/OneDrive - CGU/corona/HTML/cabecalho4.jpg)
+
+## INTRODUÇÃO
+Nessa seção constam análises relacionadas ao quantitativo de itens contratados. Tais análises são limitadas aos itens padronizáveis.   
+
+A primeira aba consiste em graficos de barras da quantidade de itens adquiridos em cada UF ponderada pela quantidade de habitantes (conforme estimativa do IBGE para 2019).  
+
+A aba seguinte contém análises das quantidades "per capita", considerando as contratações locais (estaduais e municipais) e as distribuições realizadas pelo Ministério da Saúde.  
+
+Por fim, o montante total das contratações tabuladas (considerando também os itens não padronizáveis) são representados em mapas do Brasil.  
+
+Como limitação conhecida, destaca-se que a qualidade dessas analises depende da quantidade de dados coletados. Com isso, alguns resultados podem ser afetados pela não coleta da informação, o que não significa, necessariamente, a inexistência da contratação. 
+
+## QUANTIDADES PER CAPITA {.tabset}
+
+Seguem gráficos de barras da quantidade de itens contratados em cada UF em comparação com a quantidade de habitantes
+
+### Álcool
+```{r, echo=FALSE}
+barras_item1a
+```
+
+### Aventais
+```{r, echo=FALSE}
+barras_item3a
+```
+
+### Luvas
+```{r, echo=FALSE}
+barras_item2a
+```
+
+### Macacão
+```{r, echo=FALSE}
+barras_item4a
+```
+
+### Máscara Cirúrgica
+```{r, echo=FALSE}
+barras_item6a
+```
+
+### Máscara N-95
+```{r, echo=FALSE}
+barras_item5a
+```
+
+### Óculos
+```{r, echo=FALSE}
+barras_item7a
+```
+
+### Touca
+```{r, echo=FALSE}
+barras_item8a
+```
+
+### Respiradores
+```{r, echo=FALSE}
+barras_respiradoresa
+```
+
+
+## DISTRIBUIÇÕES FEDERAIS {.tabset}
+
+Seguem gráficos de barras da quantidade per capita, considerando as contratações locais (estaduais e municipais) e as distribuições federais (Ministério da Saúde)
+
+### Álcool
+```{r, echo=FALSE}
+barras_comp1a
+```
+
+### Aventais
+```{r, echo=FALSE}
+barras_comp3a
+```
+
+### Luvas
+```{r, echo=FALSE}
+barras_comp2a
+```
+
+### Máscara Cirúrgica
+```{r, echo=FALSE}
+barras_comp6a
+```
+
+### Máscara N-95
+```{r, echo=FALSE}
+barras_comp5a
+```
+
+### Óculos
+```{r, echo=FALSE}
+barras_comp7a
+```
+
+### Touca
+```{r, echo=FALSE}
+barras_comp8a
+```
+
+### Respiradores
+```{r, echo=FALSE}
+barras_comp4a
+```
+
+## MAPA E DADOS {.tabset}
+
+### Gastos Per Capita
+![](C:/Users/User/OneDrive - CGU/corona/HTML/mapa1.jpeg)
+
+### Dados
+```{r results = 'asis',echo=FALSE} 
+aquisicoes_uf1 <- aquisicoes_uf %>% select(UF.x, gastos_totais, pop, gastos_percapita)
+print(xtable::xtable(aquisicoes_uf1),type = "html", html.table.attributes = "border=1")
+``` 
+
+#
+
+***
+
+# {.tabset .tabset-fade .tabset-pills} 
+![](C:/Users/User/OneDrive - CGU/corona/HTML/cabecalho5.jpg)
+
+## INTRODUÇÃO
+Nessa parte constam análises relacionadas às entidades públicas responsáveis pelas contratações tabuladas. Ao agrupar os registros pelas entidades contratantes, é possível identificar quais órgãos têm operacionalizados o maior volume de contratações para enfrentamento da Covid-19 (em termos financeiros). Para esse tipo de análise, foram considerados todos os registros (itens padronizáveis e não padronizáveis).  
+
+Além disso, foram calculados os escores padrões médios dos contratantes, o que aponta para os órgãos que, considerando os registros de contratações dos itens padronizáveis, têm praticados os preços unitários mais elevados em relação à média praticada no país. De igual modo, esse tipo de análise indica os órgãos que têm praticado preços inferiores à média.  
+
+## VALORES TOTAIS
+```{r, echo=FALSE}
+barras_contratante4
+```
+
+## ESCORES MÉDIOS
+```{r, echo=FALSE}
+barras_contratante2
+```
+
+#
+
+***
+
+# {.tabset .tabset-fade .tabset-pills}
+![](C:/Users/User/OneDrive - CGU/corona/HTML/cabecalho6j.jpg)
+
+## INTRODUÇÃO
+De modo semelhante às análises em relação aos orgãos contratantes, essa seção sintetiza informações sobre os principais fornecedores (em termos de valores), bem como indica aqueles que apresentam escores padrões médio acima ou abaixo da média.  
+
+Além das análises sobre o montante total contratado e as variações dos preços unitários, foram identificadas situações de potencial criticidade envolvendo as empresas contratadas. Tais situações dizem respeito à contratação de empresas recém criadas e a contratação de grande vulto com empresas de pequeno porte. Os critérios para a identificação de riscos das contratações indicados nessa seção estao em constante construção e aprimoramento.  
+
+## VALORES TOTAIS
+```{r, echo=FALSE}
+barras_fornecedor4
+```
+
+## ESCORES MÉDIOS
+```{r, echo=FALSE}
+barras_fornecedor2
+```
+
+## ANÁLISE DE RISCO {.tabset}
+
+Nessa seção constam fornecedores que apresentam níveis elevados de criticidade, de acordo com os seguintes criterios:  
+  
+- Pessoas Jurídicas criadas após junho de 2019  
+  
+- Microempresas ou Empresas de Pequeno Porte com contratos superiores a R$ 4,8 milhões  
+  
+- Fornecedores com capital social inferior a 10% do montante contratado  
+  
+
+```{r, echo=FALSE,include=FALSE}
+porte <- fornecedores1 %>% filter(porte<4) %>% filter(valor>4800000) %>% filter(porte>0)
+capital <- fornecedores1 %>% filter(capital_social>0) %>% mutate(proporcao = capital_social/valor)
+capital1 <- capital %>% filter(proporcao < 0.15)
+capital2 <- ggplot(capital, aes(x=capital_social, y=valor, popup = fornecedor)) + 
+  geom_point()
+capital3 <- ggplotly(capital2)
+```
+
+### Empresas recém criadas 
+```{r results = 'asis',echo=FALSE} 
+print(xtable::xtable(teste_data[,c(9,13,14,15,29)]),type = "html", html.table.attributes = "border=1")
+``` 
+
+### ME/MEI/EPP com contratos vultuosos
+```{r results = 'asis',echo=FALSE} 
+print(xtable::xtable(porte),type = "html", html.table.attributes = "border=1")
+``` 
+
+### Capital Social inferior a 10% dos contratos
+```{r results = 'asis',echo=FALSE} 
+print(xtable::xtable(capital1),type = "html", html.table.attributes = "border=1")
+``` 
+
+#
+
+***
+# {.tabset .tabset-fade .tabset-pills}
+![](C:/Users/User/OneDrive - CGU/corona/HTML/cabecalho7.jpg)
+
+## INTRODUÇÃO
+Nessa seção constam análises sobre os dados coletados com o viés de prospecção. Sao análises que objetivam estimar comportamentos e impactos decorrentes das contratações realizadas em situação de calamidade. Conforme a massa de dados coletados vai aumentando, aumenta-se também as possibilidades de análises com esse viés preditivo.  
+
+## ESTIMATIVAS
+```{r, echo=FALSE,include=FALSE}
+### Análise de preços (estimativas)
+aquisicoes_compa <- aquisicoes_compa %>% group_by(ITEM_PADRONIZADO) %>%
+  filter(PRECO_UNITARIO_PADRONIZADO>0) %>% 
+  mutate(mediana = median(PRECO_UNITARIO_PADRONIZADO))
+aquisicoes_compa_acima <- aquisicoes_compa %>% filter (PRECO_UNITARIO_PADRONIZADO>mediana) %>% 
+  mutate(valor_limite = mediana*QUANTIDADE_PADRONIZADA)
+aquisicoes_compa_abaixo <- aquisicoes_compa %>% filter (PRECO_UNITARIO_PADRONIZADO<mediana) %>% 
+  mutate(valor_limite = PRECO_UNITARIO_PADRONIZADO*QUANTIDADE_PADRONIZADA)
+aquisicoes_compa_igual <- aquisicoes_compa %>% filter (PRECO_UNITARIO_PADRONIZADO==mediana) %>% 
+  mutate(valor_limite = mediana*QUANTIDADE_PADRONIZADA)
+aquisicoes_compa <- bind_rows(aquisicoes_compa_acima,aquisicoes_compa_abaixo,aquisicoes_compa_igual)
+
+
+sum(aquisicoes_compa$valor_total_padronizado) # Valor total (real)
+sum(aquisicoes_compa$valor_limite) # Valor total (estimado)
+taxa <- sum(aquisicoes_compa$valor_limite)/sum(aquisicoes_compa$valor_total_padronizado) # Taxa = 0,3155348
+
+sum(aquisicoes_completo$Valor_Total) # Valor total (incluindo não padronizaveis)
+taxa*sum(aquisicoes_completo$Valor_Total) # Valor total estimado (incluindo não padronizaveis) - considerando taxa: R$ 2,03 bilhões
+(sum(aquisicoes_completo$Valor_Total))-(taxa*sum(aquisicoes_completo$Valor_Total)) # Diferença
+
+# Conclusão: Estima-se que os sobrepreços (valores acima da mediana) são responsáveis pelo desperdício de R$ 4,42 bilhões
+
+```
+
+Com base nos dados disponíveis, é possível simular os efeitos das oscilações dos preços unitários sobre o total de despesas executadas.
+
+- As aquisições de itens padronizáveis alcançam o montante total de R$ `r sum(aquisicoes_compa$valor_total_padronizado)/1000000000` bilhões
+
+- Se o limite máximo para os preços unitários dos itens padronizáveis fosse a mediana dos registros de cada item, o montante total das aquisições seria de R$ `r sum(aquisicoes_compa$valor_limite)/1000000000` bilhões
+
+- Dessa forma, a proporção entre o montante efetivamente gasto e o montante estimado tendo como limite as medianas do preço unitário é de `r sum(aquisicoes_compa$valor_limite)/sum(aquisicoes_compa$valor_total_padronizado)` %
+
+- Ao considerar também as contratações não padronizáveis, o montante total chega a R$ `r sum(aquisicoes_completo$Valor_Total)/1000000000` bilhões
+
+- Utilizando a mesma proporção calculada anteriormente, tem-se que o montante total poderia ser de R$ `r (taxa*sum(aquisicoes_completo$Valor_Total))/1000000000` bilhões
+
+**Conclusão: Estima-se que os sobrepreços (valores acima da mediana) ocorridos nas aquisições de enfrentamento da COVID-19 implicam na majoração do montante de despesas executadas na ordem de R$ `r ((sum(aquisicoes_completo$Valor_Total))-(taxa*sum(aquisicoes_completo$Valor_Total)))/1000000000` bilhões**
+
+#
+
+![](C:/Users/User/OneDrive - CGU/corona/HTML/rodape.jpg)
