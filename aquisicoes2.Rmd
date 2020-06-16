@@ -1788,20 +1788,99 @@ taxa*sum(aquisicoes_completo$Valor_Total) # Valor total estimado (incluindo não
 # Conclusão: Estima-se que os sobrepreços (valores acima da mediana) são responsáveis pelo desperdício de R$ 4,42 bilhões
 
 ```
+
+```{r, echo=FALSE,include=FALSE}
+### Análise de projecao
+proj1 <- aquisicoes_compa %>% select(ITEM_PADRONIZADO,valor_total_padronizado,valor_limite)
+proj2 <- proj1 %>% select(-valor_total_padronizado)
+proj1 <- proj1 %>% select(-valor_limite)
+proj1$valor <- proj1$valor_total_padronizado
+proj2$valor <- proj2$valor_limite
+proj2 <- proj2 %>% select(-valor_limite)
+proj1 <- proj1 %>% select(-valor_total_padronizado)
+proj1 <- proj1 %>% group_by(ITEM_PADRONIZADO) %>% summarise (valor = sum(valor))
+proj2 <- proj2 %>% group_by(ITEM_PADRONIZADO) %>% summarise (valor = sum(valor))
+proj1$Tipo_Informacao <- "Valor Real"
+proj2$Tipo_Informacao <- "Valor Projetado"
+proj1_EPI <- proj1 %>% filter(ITEM_PADRONIZADO %in% c("alcool","avental","mascara", "mascara n95","oculos","touca","macacao","luva","Touca"))
+proj1_teste <- proj1 %>% filter(ITEM_PADRONIZADO %in% c("teste","teste PCR"))
+proj1_UTI <- proj1 %>% filter(ITEM_PADRONIZADO %in% c("respirador","respirador transporte", "desfibrilador", "monitor","cama"))
+proj1_diagnostico <- proj1 %>% filter(ITEM_PADRONIZADO %in% c("eletrocardiografo","oximetro","oximetro (portatil)", "termometro","ultrassom"))
+proj1_leitos <- proj1 %>% filter(ITEM_PADRONIZADO == "leitos")
+proj1_EPI <- proj1_EPI %>% group_by(Tipo_Informacao) %>% summarise(valor = sum(valor))
+proj1_EPI$Item <- "EPI"
+proj1_teste <- proj1_teste %>% group_by(Tipo_Informacao) %>% summarise(valor = sum(valor))
+proj1_teste$Item <- "Teste"
+proj1_UTI <- proj1_UTI %>% group_by(Tipo_Informacao) %>% summarise(valor = sum(valor))
+proj1_UTI$Item <- "Equip. UTI"
+proj1_diagnostico <- proj1_diagnostico %>% group_by(Tipo_Informacao) %>% summarise(valor = sum(valor))
+proj1_diagnostico$Item <- "Equip. Diagnóstico"
+proj1_leitos <- proj1_leitos %>% group_by(Tipo_Informacao) %>% summarise(valor = sum(valor))
+proj1_leitos$Item <- "Leitos"
+
+proj2_EPI <- proj2 %>% filter(ITEM_PADRONIZADO %in% c("alcool","avental","mascara", "mascara n95","oculos","touca","macacao","luva","Touca"))
+proj2_teste <- proj2 %>% filter(ITEM_PADRONIZADO %in% c("teste","teste PCR"))
+proj2_UTI <- proj2 %>% filter(ITEM_PADRONIZADO %in% c("respirador","respirador transporte", "desfibrilador", "monitor","cama"))
+proj2_diagnostico <- proj2 %>% filter(ITEM_PADRONIZADO %in% c("eletrocardiografo","oximetro","oximetro (portatil)", "termometro","ultrassom"))
+proj2_leitos <- proj2 %>% filter(ITEM_PADRONIZADO == "leitos")
+proj2_EPI <- proj2_EPI %>% group_by(Tipo_Informacao) %>% summarise(valor = sum(valor))
+proj2_EPI$Item <- "EPI"
+proj2_teste <- proj2_teste %>% group_by(Tipo_Informacao) %>% summarise(valor = sum(valor))
+proj2_teste$Item <- "Teste"
+proj2_UTI <- proj2_UTI %>% group_by(Tipo_Informacao) %>% summarise(valor = sum(valor))
+proj2_UTI$Item <- "Equip. UTI"
+proj2_diagnostico <- proj2_diagnostico %>% group_by(Tipo_Informacao) %>% summarise(valor = sum(valor))
+proj2_diagnostico$Item <- "Equip. Diagnóstico"
+proj2_leitos <- proj2_leitos %>% group_by(Tipo_Informacao) %>% summarise(valor = sum(valor))
+proj2_leitos$Item <- "Leitos"
+
+proj <- rbind(proj1_EPI,proj1_teste,proj1_UTI,proj1_diagnostico,proj1_leitos,
+              proj2_EPI,proj2_teste,proj2_UTI,proj2_diagnostico,proj2_leitos)
+rm(proj1_EPI,proj1_teste,proj1_UTI,proj1_diagnostico,proj1_leitos,
+    proj2_EPI,proj2_teste,proj2_UTI,proj2_diagnostico,proj2_leitos)
+proj_total1 <- proj %>% filter(Tipo_Informacao == "Valor Real")
+proj_total1 <- proj_total1 %>% group_by(Tipo_Informacao) %>% summarise(valor=sum(valor))
+proj_total1$Item <- "Total"
+proj_total2 <- proj %>% filter(Tipo_Informacao == "Valor Projetado")
+proj_total2 <- proj_total2 %>% group_by(Tipo_Informacao) %>% summarise(valor=sum(valor))
+proj_total2$Item <- "Total"
+proj <- rbind(proj,proj_total1,proj_total2)
+
+projecao <- ggplot(proj, aes(fill=Tipo_Informacao, y=valor, x=reorder(as.factor(Item),valor))) + 
+  geom_bar(position="dodge", stat="identity") +
+  theme_ipsum() +
+  xlab("")
+projecao1 <- ggplotly(projecao)
+
+```
+
+
+
 <div style="text-align: justify"> 
 Com base nos dados disponíveis, é possível simular os efeitos das oscilações dos preços unitários sobre o total de despesas executadas.
 
 - As aquisições de itens padronizáveis alcançam o montante total de R$ `r sum(aquisicoes_compa$valor_total_padronizado)/1000000000` bilhões
 
-- Se o limite máximo para os preços unitários dos itens padronizáveis fosse a mediana dos registros de cada item, o montante total das aquisições seria de R$ `r sum(aquisicoes_compa$valor_limite)/1000000000` bilhões
+- Se o limite máximo para os preços unitários dos itens padronizáveis fosse a mediana dos registros de cada item, o montante total das aquisições seria de R$ `r sum(aquisicoes_compa$valor_limite)/1000000000` bilhões.
 
-- Ao considerar também as contratações não padronizáveis, o montante total chega a R$ `r sum(aquisicoes_completo$Valor_Total)/1000000000` bilhões
+O Gráfico a seguir ilustra a projeção do montante total majorado em decorrência dos sobrepreços nos itens padronizáveis  
 
-- Utilizando a mesma proporção calculada anteriormente, tem-se que o montante total poderia ser de R$ `r (taxa*sum(aquisicoes_completo$Valor_Total))/1000000000` bilhões
+</div>
+
+<div style="text-align: justify"> 
+```{r, echo=FALSE}
+projecao1
+```
+
+</div>
+
+<div style="text-align: justify"> 
+- Considerando também as contratações não padronizáveis alcançam o montante de R$ `r sum(aquisicoes_completo$Valor_Total)/1000000000` bilhões e utilizando a mesma proporção calculada anteriormente, tem-se que o montante total poderia ser de R$ `r (taxa*sum(aquisicoes_completo$Valor_Total))/1000000000` bilhões
 
 **Conclusão: Estima-se que os sobrepreços (valores acima da mediana) ocorridos nas aquisições de enfrentamento da COVID-19 implicam na majoração do montante de despesas executadas na ordem de R$ `r ((sum(aquisicoes_completo$Valor_Total))-(taxa*sum(aquisicoes_completo$Valor_Total)))/1000000000` bilhão (ou `r (1.7008774/10.8177784)*100` %) **
 
 </div> 
+
 #
 
 ![](C:/Users/User/OneDrive - CGU/corona/HTML/rodape.jpg)
