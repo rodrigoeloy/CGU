@@ -22,7 +22,7 @@ library(kableExtra)
 library(lubridate)
 library(xtable)
 
-aquisicoes_completo <- read_excel("ajustados_2_linha/piloto0806.xlsx", col_types = c("text", "text", "text", 
+aquisicoes_completo <- read_excel("ajustados_2_linha/piloto266.xlsx", col_types = c("text", "text", "text", 
                                                                                     "text", "text", "text",
                                                                                     "text", "text", "text", 
                                                                                     "text", "text", "text", 
@@ -1128,6 +1128,8 @@ barras_fornecedor3 <- fornecedores1 %>% filter(valor>10000000) %>%
   ylab("Valor Total")
 barras_fornecedor4 <- ggplotly(barras_fornecedor3)
 
+fornecedores1 <- fornecedores1 %>% arrange(desc(valor))
+
 # Graficos de barras (contratantes)
 contratantes <- aquisicoes_compa %>% mutate(contratante = paste(contratante, UF, sep=" - "))
 contratantes <- contratantes %>% group_by(contratante) %>% summarise (Z_media = mean(z_valor), valor_total = sum(valor_total_padronizado))
@@ -1167,6 +1169,7 @@ barras_contratante3 <- contratantes1 %>% filter(valor >10000000) %>%
   ylab("Valor Total")
 barras_contratante4 <- ggplotly(barras_contratante3)
 
+contratantes1 <- contratantes1 %>% arrange(desc(valor))
 ```
 
 ```{echo=FALSE,include=FALSE}
@@ -1364,12 +1367,13 @@ barras_casos8 <- ggplotly(barras_casos8)
 
 ```
 
+
 <div style="text-align: justify"> 
 
 Essa página contém análises sobre os dados coletados e divulgados pela Controladoria-Geral da União (CGU) acerca de contratações realizadas pelos entes federativos (União, Estados e Municípios) para o enfrentamento da COVID-19.  
 
 Os dados utilizados nessa análise em constante atualização e disponíveis 
-[AQUI](https://github.com/rodrigoeloy/CGU/raw/master/piloto0806.xlsx).   
+[AQUI](https://github.com/rodrigoeloy/CGU/raw/master/piloto1506.xlsx).   
 
 As análises foram realizadas na linguagem R e essa página foi elaborada com o RMarkdown. O código elaborado está disponível [AQUI](https://raw.githubusercontent.com/rodrigoeloy/CGU/master/aquisicoes2.Rmd). 
 
@@ -1386,7 +1390,7 @@ As análises estão divididas em 5 partes. São elas:
 * Fornecedores
 * Estimativas e Projeções  
 
-No início de cada parte consta uma introdução sobre os objetivos das análises contidas naquela seção, bem como os principais conceitos, metodologias e limitaçoes conhecidas. Assim como ocorre com o volume de dados coletados, as análises aqui contidas são dinâmicas e atualizadas regularmente.
+No início de cada parte consta uma introdução sobre os objetivos das análises contidas naquela seção, bem como os principais conceitos, metodologias e limitações conhecidas. Assim como ocorre com o volume de dados coletados, as análises aqui contidas são dinâmicas e atualizadas regularmente.
 
 </div>
 
@@ -1415,9 +1419,9 @@ Para mais informações sobre o "escore padrão": [LINK](https://en.wikipedia.or
 ## POR ITEM {.tabset}
 
 <div style="text-align: justify"> 
-O conjuto de gráficos abaixo indicam as variações dos preços unitários dos itens comparáveis. Cada ponto do gráfico representa uma aquisição. Os registros localizados dentro das "caixas" consistem naqueles localizados entre o 1º e o 3º quartil, ou seja, são aqueles que apresentam pouca variação relativa. Quanto mais distante das "caixas" maior é a diferença do preço praticado em relação aos demais registros do mesmo item. Tecnicamente, são considerados "outliers" aqueles registros superiores a 1,5 vezes a distância interquartil (diferença entre o primeiro e o terceiro quartil). Para ilustrar itens diferentes no mesmo gráfico, optou-se pela padronização dos preços unitários (score padrão). Abaixo de cada gráfico há a indicação das medidas de posição para cada item (quantidade total adquirida, quantidade de registros de aquisições, 1º quartil, média, mediana e 3º quartil).  
+O conjunto de gráficos abaixo indicam as variações dos preços unitários dos itens comparáveis. Cada ponto do gráfico representa uma aquisição. Os registros localizados dentro das "caixas" consistem naqueles localizados entre o 1º e o 3º quartil, ou seja, são aqueles que apresentam pouca variação relativa. Quanto mais distante das "caixas" maior é a diferença do preço praticado em relação aos demais registros do mesmo item. Tecnicamente, são considerados "outliers" aqueles registros superiores a 1,5 vezes a distância interquartil (diferença entre o primeiro e o terceiro quartil). Para ilustrar itens diferentes no mesmo gráfico, optou-se pela padronização dos preços unitários (score padrão). Abaixo de cada gráfico há a indicação das medidas de posição para cada item (quantidade total adquirida, quantidade de registros de aquisições, 1º quartil, média, mediana e 3º quartil).  
 
-Os itens padronizaveis foram divididos em 5 categorias. São elas:
+Os itens padronizáveis foram divididos em 5 categorias. São elas:
 
 * Equipamentos de Proteção individual (EPI): álcool, aventais, luvas, macacão, máscara cirúrgica, máscara N-95, óculos de proteção e touca;
 * Testes para Diagnóstico: Testes Rápidos e Testes PCR
@@ -1464,7 +1468,7 @@ boxplot_leitos1
 
 ## POR UF {.tabset}
 
-O conjuto de gráficos dessa seção representam as variações dos preços unitários dos itens comparáveis. Nesse caso, os preços são apresentados por UF, possibilitando a análise regionalizada para cada item.
+O conjunto de gráficos dessa seção representam as variações dos preços unitários dos itens comparáveis. Nesse caso, os preços são apresentados por UF, possibilitando a análise regionalizada para cada item.
 
 ### Álcool
 ```{r, echo=FALSE}
@@ -1552,7 +1556,7 @@ boxplot_leitos4
 <div style="text-align: justify"> 
 Nessa seção constam análises relacionadas ao quantitativo de itens contratados. Tais análises são limitadas aos itens padronizáveis.   
 
-A primeira aba consiste em graficos de barras da quantidade de itens adquiridos em cada UF ponderada pela quantidade de habitantes (conforme estimativa do IBGE para 2019).  
+A primeira aba consiste em gráficos de barras da quantidade de itens adquiridos em cada UF ponderada pela quantidade de habitantes (conforme estimativa do IBGE para 2019).  
 
 A aba seguinte contém análises das quantidades "per capita", considerando as contratações locais (estaduais e municipais) e as distribuições realizadas pelo Ministério da Saúde.  
 
@@ -1677,9 +1681,9 @@ print(xtable::xtable(aquisicoes_uf1),type = "html", html.table.attributes = "bor
 ## INTRODUÇÃO
 <div style="text-align: justify"> 
 
-Nessa parte constam análises relacionadas às entidades públicas responsáveis pelas contratações tabuladas. Ao agrupar os registros pelas entidades contratantes, é possível identificar quais órgãos têm operacionalizados o maior volume de contratações para enfrentamento da Covid-19 (em termos financeiros). Para esse tipo de análise, foram considerados todos os registros (itens padronizáveis e não padronizáveis).  
+Nessa parte constam análises relacionadas às entidades públicas responsáveis pelas contratações tabuladas. Ao agrupar os registros pelas entidades contratantes, é possível identificar quais órgãos têm operacionalizado o maior volume de contratações para enfrentamento da Covid-19 (em termos financeiros). Para esse tipo de análise, foram considerados todos os registros (itens padronizáveis e não padronizáveis).  
 
-Além disso, foram calculados os escores padrões médios dos contratantes, o que aponta para os órgãos que, considerando os registros de contratações dos itens padronizáveis, têm praticados os preços unitários mais elevados em relação à média praticada no país. De igual modo, esse tipo de análise indica os órgãos que têm praticado preços inferiores à média.  
+
 
 </div> 
 
@@ -1688,11 +1692,10 @@ Além disso, foram calculados os escores padrões médios dos contratantes, o qu
 barras_contratante4
 ```
 
-## ESCORES MÉDIOS
-```{r, echo=FALSE}
-barras_contratante2
-```
-
+## DADOS AGRUPADOS POR CONTRATANTES
+```{r results = 'asis',echo=FALSE} 
+print(xtable::xtable(contratantes1),type = "html", html.table.attributes = "border=1")
+``` 
 #
 
 ***
@@ -1702,23 +1705,24 @@ barras_contratante2
 
 ## INTRODUÇÃO
 <div style="text-align: justify"> 
-De modo semelhante às análises em relação aos orgãos contratantes, essa seção sintetiza informações sobre os principais fornecedores (em termos de valores), bem como indica aqueles que apresentam escores padrões médio acima ou abaixo da média.  
+De modo semelhante às análises em relação aos órgãos contratantes, essa seção sintetiza informações sobre os principais fornecedores (em termos de valores).  
 
-Além das análises sobre o montante total contratado e as variações dos preços unitários, foram identificadas situações de potencial criticidade envolvendo as empresas contratadas. Tais situações dizem respeito à contratação de empresas recém criadas e a contratação de grande vulto com empresas de pequeno porte. Os critérios para a identificação de riscos das contratações indicados nessa seção estao em constante construção e aprimoramento.  
+Além das análises sobre o montante total contratado, foram identificadas situações de potencial criticidade envolvendo as empresas contratadas. Tais situações dizem respeito à contratação de empresas recém criadas e a contratação de grande vulto com empresas de pequeno porte. Os critérios para a identificação de riscos das contratações indicados nessa seção estão em constante construção e aprimoramento.  
 </div> 
 ## VALORES TOTAIS
 ```{r, echo=FALSE}
 barras_fornecedor4
 ```
 
-## ESCORES MÉDIOS
-```{r, echo=FALSE}
-barras_fornecedor2
-```
+## DADOS AGRUPADOS POR FORNECEDOR
+```{r results = 'asis',echo=FALSE} 
+print(xtable::xtable(fornecedores1[,c(1,2)]),type = "html", html.table.attributes = "border=1")
+``` 
+
 
 ## ANÁLISE DE RISCO {.tabset}
 <div style="text-align: justify"> 
-Nessa seção constam fornecedores que apresentam níveis elevados de criticidade, de acordo com os seguintes criterios:  
+Nessa seção constam fornecedores que apresentam níveis elevados de criticidade, de acordo com os seguintes critérios:  
   
 - Pessoas Jurídicas criadas após junho de 2019  
   
@@ -1877,7 +1881,7 @@ projecao1
 <div style="text-align: justify"> 
 - Considerando também as contratações não padronizáveis alcançam o montante de R$ `r sum(aquisicoes_completo$Valor_Total)/1000000000` bilhões e utilizando a mesma proporção calculada anteriormente, tem-se que o montante total poderia ser de R$ `r (taxa*sum(aquisicoes_completo$Valor_Total))/1000000000` bilhões
 
-**Conclusão: Estima-se que os sobrepreços (valores acima da mediana) ocorridos nas aquisições de enfrentamento da COVID-19 implicam na majoração do montante de despesas executadas na ordem de R$ `r ((sum(aquisicoes_completo$Valor_Total))-(taxa*sum(aquisicoes_completo$Valor_Total)))/1000000000` bilhão (ou `r (1.7008774/10.8177784)*100` %) **
+**Conclusão: Estima-se que os sobrepreços (valores acima da mediana) ocorridos nas aquisições de enfrentamento da COVID-19 implicam na majoração do montante de despesas executadas na ordem de R$ `r ((sum(aquisicoes_completo$Valor_Total))-(taxa*sum(aquisicoes_completo$Valor_Total)))/1000000000` bilhão (ou `r (1.5320497/11.1956021)*100` %) **
 
 </div> 
 
