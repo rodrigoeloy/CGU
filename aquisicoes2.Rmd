@@ -22,7 +22,7 @@ library(kableExtra)
 library(lubridate)
 library(xtable)
 
-aquisicoes_completo <- read_excel("ajustados_2_linha/piloto266.xlsx", col_types = c("text", "text", "text", 
+aquisicoes_completo <- read_excel("ajustados_2_linha/piloto0607.xlsx", col_types = c("text", "text", "text", 
                                                                                     "text", "text", "text",
                                                                                     "text", "text", "text", 
                                                                                     "text", "text", "text", 
@@ -31,7 +31,7 @@ aquisicoes_completo <- read_excel("ajustados_2_linha/piloto266.xlsx", col_types 
                                                                                     "text", "text", "text", 
                                                                                     "text", "text","numeric", 
                                                                                     "numeric","text","text",
-                                                                                    "numeric","text","numeric"))
+                                                                                    "numeric","text","numeric","text"))
 
 aquisicoes_compa <- aquisicoes_completo %>% filter(verificacao == "OK")
 aquisicoes_compa <- aquisicoes_compa %>% filter(ITEM_PADRONIZADO != "diversos")
@@ -49,9 +49,9 @@ cod_uf <- read_csv2("C:/Users/User/OneDrive - CGU/corona/cod_uf.csv")
 ## Scripts para tratamento dos dados
 aquisicoes_completo <- replace(aquisicoes_completo, is.na(aquisicoes_completo), 0)
 aquisicoes_completo$date <- ymd(aquisicoes_completo$data_inicio_ativ)
-aquisicoes_completo$intervalo <- aquisicoes_completo$date %--% dmy("08-06-2020") 
+aquisicoes_completo$intervalo <- aquisicoes_completo$date %--% dmy("06-07-2020") 
 aquisicoes_completo$intervalo <- aquisicoes_completo$intervalo / ddays(1)
-teste_data <- aquisicoes_completo %>% filter(intervalo<180)
+teste_data <- aquisicoes_completo %>% filter(intervalo<187)
 
 # DF geral (itens comparáveis)
 aquisicoes_compa <- aquisicoes_compa %>% group_by(ITEM_PADRONIZADO) %>% mutate(
@@ -1373,14 +1373,14 @@ barras_casos8 <- ggplotly(barras_casos8)
 Essa página contém análises sobre os dados coletados e divulgados pela Controladoria-Geral da União (CGU) acerca de contratações realizadas pelos entes federativos (União, Estados e Municípios) para o enfrentamento da COVID-19.  
 
 Os dados utilizados nessa análise em constante atualização e disponíveis 
-[AQUI](https://github.com/rodrigoeloy/CGU/raw/master/piloto1506.xlsx).   
+[AQUI](https://github.com/rodrigoeloy/CGU/raw/master/piloto0207.xlsx).   
 
 As análises foram realizadas na linguagem R e essa página foi elaborada com o RMarkdown. O código elaborado está disponível [AQUI](https://raw.githubusercontent.com/rodrigoeloy/CGU/master/aquisicoes2.Rmd). 
 
 
-Atualmente, são considerados nessas análises `r nrow(aquisicoes_completo)` registros de contratações relacionadas ao enfrentamento da COVID-19, alcançando o montante de R$ `r sum(aquisicoes_completo$Valor_Total)/1000000000` bilhões.  
+Atualmente, são considerados nessas análises `r nrow(aquisicoes_completo)` registros de contratações relacionadas ao enfrentamento da COVID-19, alcançando o montante de R$ `r round(sum(aquisicoes_completo$Valor_Total)/1000000000)` bilhões.  
 
-Desse total, `r ((sum(aquisicoes_compa$Valor_Total)/1000000000) / (sum(aquisicoes_completo$Valor_Total)/1000000000))*100` % são referentes aos aqui denominados "itens padronizáveis", que são aqueles objetos contratados em larga escala para o enfrentamento da COVID e que podem ser comparados entre si, tais como álcool em gel, máscaras e ventiladores mecânicos (respiradores).  
+Desse total, `r round(((sum(aquisicoes_compa$Valor_Total)/1000000000) / (sum(aquisicoes_completo$Valor_Total)/1000000000))*100)`% são referentes aos aqui denominados "itens padronizáveis", que são aqueles objetos contratados em larga escala para o enfrentamento da COVID e que podem ser comparados entre si, tais como álcool em gel, máscaras e ventiladores mecânicos (respiradores).  
 
 As análises estão divididas em 5 partes. São elas:
 
@@ -1436,6 +1436,7 @@ Os itens padronizáveis foram divididos em 5 categorias. São elas:
 ```{r, echo=FALSE}
 boxplot_epi1
 ```
+
 ![](C:/Users/User/OneDrive - CGU/corona/HTML/quadro1.jpg)
 
 ### Testes para Diagnóstico
@@ -1724,7 +1725,7 @@ print(xtable::xtable(fornecedores1[,c(1,2)]),type = "html", html.table.attribute
 <div style="text-align: justify"> 
 Nessa seção constam fornecedores que apresentam níveis elevados de criticidade, de acordo com os seguintes critérios:  
   
-- Pessoas Jurídicas criadas após junho de 2019  
+- Pessoas Jurídicas criadas em 2020  
   
 - Microempresas ou Empresas de Pequeno Porte com contratos superiores a R$ 4,8 milhões  
   
@@ -1881,7 +1882,7 @@ projecao1
 <div style="text-align: justify"> 
 - Considerando também as contratações não padronizáveis alcançam o montante de R$ `r sum(aquisicoes_completo$Valor_Total)/1000000000` bilhões e utilizando a mesma proporção calculada anteriormente, tem-se que o montante total poderia ser de R$ `r (taxa*sum(aquisicoes_completo$Valor_Total))/1000000000` bilhões
 
-**Conclusão: Estima-se que os sobrepreços (valores acima da mediana) ocorridos nas aquisições de enfrentamento da COVID-19 implicam na majoração do montante de despesas executadas na ordem de R$ `r ((sum(aquisicoes_completo$Valor_Total))-(taxa*sum(aquisicoes_completo$Valor_Total)))/1000000000` bilhão (ou `r (1.5320497/11.1956021)*100` %) **
+**Conclusão: Estima-se que os sobrepreços (valores acima da mediana) ocorridos nas aquisições de enfrentamento da COVID-19 implicam na majoração do montante de despesas executadas na ordem de R$ `r ((sum(aquisicoes_completo$Valor_Total))-(taxa*sum(aquisicoes_completo$Valor_Total)))/1000000000` bilhão (ou `r (1.7048222/11.5602853)*100` %) **
 
 </div> 
 
